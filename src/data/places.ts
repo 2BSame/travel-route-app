@@ -82,3 +82,67 @@ export const places: Place[] = [
     y: 320,
   },
 ];
+
+
+export const places = [
+  {
+    id: 1,
+    name: "스타벅스 안동옥동점",
+    categories: ["카페"],
+    themes: ["감성"],
+    averageTime: 40,
+    latitude: 36.5660,
+    longitude: 128.7265,
+    nearestBusStopId: 1,
+    availableBusNumbers: ["210"],
+    description: "옥동 상권 중심의 인기 커피 전문점."
+  },
+  {
+    id: 2,
+    name: "이디야커피 안동옥동점",
+    categories: ["카페"],
+    themes: ["감성"],
+    averageTime: 35,
+    latitude: 36.5655,
+    longitude: 128.7260,
+    nearestBusStopId: 1,
+    availableBusNumbers: ["210"],
+    description: "가성비 좋은 커피 전문점."
+  },
+  {
+    id: 3,
+    name: "죠스떡볶이 안동옥동점",
+    categories: ["식당"],
+    themes: ["맛집"],
+    averageTime: 45,
+    latitude: 36.5651,
+    longitude: 128.7248,
+    nearestBusStopId: 2,
+    availableBusNumbers: ["110", "210"],
+    description: "매콤달콤한 떡볶이 전문 맛집."
+  },
+  {
+    id: 4,
+    name: "옥동 복주1길 상가거리",
+    categories: ["산책", "문화"],
+    themes: ["감성"],
+    averageTime: 50,
+    latitude: 36.5645,
+    longitude: 128.7252,
+    nearestBusStopId: 2,
+    availableBusNumbers: ["110", "210"],
+    description: "옥동 대표 상가 산책거리."
+  },
+  {
+    id: 5,
+    name: "옥동 중앙공원",
+    categories: ["산책"],
+    themes: ["자연", "감성"],
+    averageTime: 60,
+    latitude: 36.5642,
+    longitude: 128.7235,
+    nearestBusStopId: 3,
+    availableBusNumbers: ["110"],
+    description: "지역 주민이 자주 찾는 공원."
+  }
+  ];
