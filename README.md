@@ -14,12 +14,6 @@
 - [문제점 / 피드백 / 할 일 Issues](https://github.com/2BSame/travel-route-app/issues)
 - [할 일 칸반보드 Projects](https://github.com/2BSame/travel-route-app/projects)
 
-## 데이터 파일
-
-- 장소 데이터: `data/places.json`
-- 장소 데이터 예시: `data/places.sample.json`
-- 버스 데이터: `data/bus-routes.json`
-
 ## 팀원 작업 방식
 
 1. 각자 맡은 파트 문서를 확인한다.
