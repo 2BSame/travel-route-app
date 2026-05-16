@@ -8,6 +8,13 @@
 - [알고리즘 파트 가이드북](docs/guidebook/algorithm-guide.md)(제작중)
 - [통합 가이드북](docs/guidebook/integration-guide.md)(제작중)
 
+## 프로젝트 관리 링크
+
+- [자유 토론 / 아이디어 Discussions](https://github.com/2BSame/LTCR/discussions)
+- [문제점 / 피드백 / 할 일 Issues](https://github.com/2BSame/LTCR/issues)
+- [할 일 칸반보드 Projects](https://github.com/2BSame/LTCR/projects)
+- [작업 기록 Actions](https://github.com/2BSame/LTCR/actions)
+
 ## 데이터 파일
 
 - 장소 데이터: `data/places.json`
