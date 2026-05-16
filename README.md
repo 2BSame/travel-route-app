@@ -1,7 +1,8 @@
 ## Travel_route_app
 
 - 여행_루트_앱
-- 주된 소식이나 공지는 [Discussions](https://github.com/2BSame/travel-route-app/discussions)를 통해 이루어질 계획입니다. 확인부탁드립니다.
+- 주된 소식이나 공지는 [Discussions](https://github.com/2BSame/travel-route-app/discussions)를 통해 이루어질 계획입니다.
+  지속적으로 확인부탁드립니다.
 - [깃헙에서 파일 수정 및 제출법](docs/github-file-edit-guide.md)
 
 ## 프로젝트 문서
