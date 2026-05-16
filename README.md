@@ -12,7 +12,6 @@
 
 - [자유 토론 / 아이디어 Discussions](https://github.com/2BSame/travel-route-app/discussions)
 - [문제점 / 피드백 / 할 일 Issues](https://github.com/2BSame/travel-route-app/issues)
-- [할 일 칸반보드 Projects](https://github.com/2BSame/travel-route-app/projects)
 
 ## 팀원 작업 방식
 
