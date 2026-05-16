@@ -10,9 +10,12 @@
 
 ## 프로젝트 관리 링크
 
-- [자유 토론 / 아이디어 Discussions](https://github.com/2BSame/LTCR/discussions)
-- [문제점 / 피드백 / 할 일 Issues](https://github.com/2BSame/LTCR/issues)
-- [할 일 칸반보드 Projects](https://github.com/2BSame/LTCR/projects)
+- [자유 토론 / 아이디어 Discussions](https://github.com/2BSame/
+travel-route-app/discussions)
+- [문제점 / 피드백 / 할 일 Issues](https://github.com/2BSame/
+travel-route-app/issues)
+- [할 일 칸반보드 Projects](https://github.com/2BSame/
+travel-route-app/projects)
 
 ## 데이터 파일
 
