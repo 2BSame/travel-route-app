@@ -4,7 +4,7 @@
 - 주된 소식이나 공지는 [Discussions](https://github.com/2BSame/travel-route-app/discussions)를 통해 이루어질 계획입니다.
   지속적으로 확인부탁드립니다.
 - 파일내에 있는 코드는 예시 코드로 넣어둔 것 입니다./ 임의로 제거 및 변경해도 큰 문제 없습니다.
-- 궁금한 것이나 질문은 [Discussions](https://github.com/2BSame/travel-route-app/discussions)에 답변 질문에 올려주시면 됨니다.
+- 궁금한 것이나 질문은 [Discussions](https://github.com/2BSame/travel-route-app/discussions)에 Q&A 에 올려주시면 됨니다.
 - [깃헙에서 파일 수정 및 제출법](docs/github-file-edit-guide.md)
 
 ## 프로젝트 문서
