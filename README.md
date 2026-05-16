@@ -6,6 +6,7 @@
 ## 프로젝트 문서
 
 - [프로젝트 개요](docs/project-overview.md)(제작중)
+- [깃헙에서 파일 수정 및 제출법](docs/github-file-edit-guide.md)
 - [데이터 파트 가이드북](docs/guidebook/data-guide.md)
 - [UI 파트 가이드북](docs/guidebook/ui-guide.md)(제작중)
 - [알고리즘 파트 가이드북](docs/guidebook/algorithm-guide.md)(제작중)
