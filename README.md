@@ -1,7 +1,7 @@
 ## Travel_route_app
 
 - 여행_루트_앱
-- 주된 소식이나 공지는 Discussions를 통해이루어질 계획입니다. 확인부탁드립니다.
+- 주된 소식이나 공지는 [Discussions](https://github.com/2BSame/travel-route-app/discussions)를 통해 이루어질 계획입니다. 확인부탁드립니다.
 
 ## 프로젝트 문서
 
