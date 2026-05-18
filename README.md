@@ -16,7 +16,7 @@
 - [UI 파트 가이드북1(알고리즘 사용법)](docs/guidebook/ui-guide.md)
 - [UI 파트 가이드북2](docs/guidebook/UI_GUIDEBOOK2.md)
   
-- [통합 가이드북](docs/guidebook/integration-guide.md)(제작중)
+- [실행 가이드북](docs/guidebook/integration-guide.md)
 
 ## 프로젝트 관리 링크
 
