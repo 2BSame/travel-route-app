@@ -82,12 +82,5 @@ export const busStops: BusStop[] = [
     latitude: 36.5422363,
     longitude: 128.5565804,
     availableBus: ["210"]
-  },
-  {
-    id: 12,
-    name: "송현오거리",
-    latitude: 36.5720832,
-    longitude: 128.698162,
-    availableBus: ["210"]
   }
 ];
