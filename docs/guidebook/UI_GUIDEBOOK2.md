@@ -60,11 +60,11 @@ UI 담당자는 복잡한 알고리즘 내부를 직접 수정할 필요는 없�
 
 ### 2페이지: 모의지도 경로 화면
 
-![모의지도 경로 화면](../images/ui_screen_01_input.png)
+![모의지도 경로 화면](../images/ui_screen_02_input.png)
 
 ### 3페이지: 경로 상세 설명 화면
 
-![경로 상세 설명 화면](../images/ui_screen_01_input.png)
+![경로 상세 설명 화면](../images/ui_screen_03_input.png)
 
 ---
 
