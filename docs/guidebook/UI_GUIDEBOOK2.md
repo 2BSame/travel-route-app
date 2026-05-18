@@ -56,15 +56,15 @@ UI 담당자는 복잡한 알고리즘 내부를 직접 수정할 필요는 없�
 
 ### 1페이지: 여행 조건 선택 화면
 
-![여행 조건 선택 화면](./images/ui_screen_01_input.png)
+![여행 조건 선택 화면](docs/images/ui_screen_01_detail.png)
 
 ### 2페이지: 모의지도 경로 화면
 
-![모의지도 경로 화면](./images/ui_screen_02_map.png)
+![모의지도 경로 화면](docs/images/ui_screen_02_detail.png)
 
 ### 3페이지: 경로 상세 설명 화면
 
-![경로 상세 설명 화면](./images/ui_screen_03_detail.png)
+![경로 상세 설명 화면](docs/images/ui_screen_03_detail.png)
 
 ---
 
