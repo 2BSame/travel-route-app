@@ -13,7 +13,7 @@
   
 - [데이터 파트 가이드북](docs/guidebook/data-guide.md)
 - [알고리즘 파트 가이드북](docs/guidebook/algorithm-guide.md)
-- [UI 파트 가이드북](docs/guidebook/ui-guide.md)(제작중)
+- [UI 파트 가이드북1(알고리즘 사용법)](docs/guidebook/ui-guide.md)
   
 - [통합 가이드북](docs/guidebook/integration-guide.md)(제작중)
 
