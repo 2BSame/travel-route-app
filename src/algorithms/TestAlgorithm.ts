@@ -1,4 +1,4 @@
-import { themeMask } from "../types/place";
+import { categoryMask, themeMask } from "../types/place";
 import { UserRouteInput } from "../types/userInput";
 import { createRoute } from "./routeMaker";
 
@@ -7,7 +7,7 @@ const mockUserInput: UserRouteInput = {
   startTime: "10:00", // 오전 10시 출발
   totalAvailableTime: 900,      // 총 15시간(900분)
   themes: themeMask.MOOD | themeMask.FOOD, // 분위기 & 먹거리 테마
-  categories: themeMask.FOOD, // 먹거리 카테고리
+  categories: categoryMask.FOOD, // 먹거리 카테고리
   mealRequired: true,  // 식사를 우선할 것
   maxPlaceCount: 5, //5개 방문
   startBusStopId: 1,            // 터미널에서 출발
