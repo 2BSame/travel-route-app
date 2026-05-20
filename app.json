@@ -1,48 +1,111 @@
-{
-  "expo": {
-    "name": "travel-route-app",
-    "slug": "travel-route-app",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "travelrouteapp",
-    "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
-    },
-    "web": {
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
-    },
-    "plugins": [
-      "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
-          "dark": {
-            "backgroundColor": "#000000"
-          }
-        }
-      ]
-    ],
-    "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
-    }
-  }
+import React, { useState } from "react";
+import { SafeAreaView, StyleSheet, View, Text, Pressable, StatusBar, Platform } from "react-native";
+import { FinalRoute } from "./src/types/route";
+import ConditionScreen from "./src/screens/ConditionScreen";
+import MockMapScreen from "./src/screens/MockMapScreen";
+import RouteDetailScreen from "./src/screens/RouteDetailScreen";
+
+export default function App() {
+  const [currentScreen, setCurrentScreen] = useState<"input" | "map" | "detail">("input");
+  const [generatedRoute, setGeneratedRoute] = useState<FinalRoute | null>(null);
+
+  const handleRouteGenerated = (route: FinalRoute) => {
+    setGeneratedRoute(route);
+    setCurrentScreen("map"); // 조건 생성 완료 시 자동으로 모의지도로 이동
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Expo Go 시연 중 상단 바 상태를 깔끔하게 유지 */}
+      <StatusBar barStyle="dark-content" backgroundColor="#F6F8F2" />
+      
+      <View style={styles.body}>
+        {currentScreen === "input" && (
+          <ConditionScreen onRouteGenerated={handleRouteGenerated} />
+        )}
+        {currentScreen === "map" && generatedRoute && (
+          <MockMapScreen route={generatedRoute} />
+        )}
+        {currentScreen === "detail" && generatedRoute && (
+          <RouteDetailScreen route={generatedRoute} />
+        )}
+        {currentScreen !== "input" && !generatedRoute && (
+          <View style={styles.center}>
+            <Text style={styles.centerText}>경로를 먼저 생성해주세요.</Text>
+          </View>
+        )}
+      </View>
+
+      {/* 하단 발표용 내비게이션 바 */}
+      <View style={styles.navBar}>
+        <Pressable 
+          style={[styles.navButton, currentScreen === "input" && styles.activeNav]} 
+          onPress={() => setCurrentScreen("input")}
+        >
+          <Text style={[styles.navText, currentScreen === "input" && styles.activeNavText]}>1. 조건 선택</Text>
+        </Pressable>
+        <Pressable 
+          style={[styles.navButton, currentScreen === "map" && styles.activeNav]} 
+          onPress={() => setCurrentScreen("map")}
+        >
+          <Text style={[styles.navText, currentScreen === "map" && styles.activeNavText]}>2. 모의 지도</Text>
+        </Pressable>
+        <Pressable 
+          style={[styles.navButton, currentScreen === "detail" && styles.activeNav]} 
+          onPress={() => setCurrentScreen("detail")}
+        >
+          <Text style={[styles.navText, currentScreen === "detail" && styles.activeNavText]}>3. 상세 설명</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F6F8F2",
+    // 안드로이드 Expo Go에서 상단 바 여백이 안 먹히는 버그 방지
+    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
+  },
+  body: {
+    flex: 1,
+  },
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  centerText: {
+    fontSize: 15,
+    color: "#5B6657",
+  },
+  navBar: {
+    flexDirection: "row",
+    height: 64,
+    backgroundColor: "#FFFFFF",
+    borderTopWidth: 1,
+    borderTopColor: "#EBEFE8",
+    paddingHorizontal: 16,
+    alignItems: "center",
+  },
+  navButton: {
+    flex: 1,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+  },
+  activeNav: {
+    backgroundColor: "#EBF3EE",
+  },
+  navText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#5B6657",
+  },
+  activeNavText: {
+    color: "#2F6F3E",
+    fontWeight: "700",
+  },
+});
