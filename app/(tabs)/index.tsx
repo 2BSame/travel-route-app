@@ -1,11 +1,14 @@
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
+  Dimensions,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import Svg, { Line } from "react-native-svg";
 
 import { createRoute } from "../../src/algorithms/routeMaker";
 import { busStops } from "../../src/data/busStop";
@@ -13,6 +16,14 @@ import { places } from "../../src/data/places";
 import { categoryMask, themeMask } from "../../src/types/place";
 import type { FinalRoute } from "../../src/types/route";
 import type { UserRouteInput } from "../../src/types/userInput";
+
+// 📍 [추가] assets/images 폴더의 안동 약도를 불러옵니다.
+const andongMapImage = require("../../assets/images/안동시내 약도.PNG");
+
+// 📍 [추가] 시각화 가로 폭 계산 (화면 여백 제외 크기)
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const MAP_WIDTH = SCREEN_WIDTH - 40; 
+const MAP_HEIGHT = MAP_WIDTH * 0.73; // 안동 약도 이미지의 가로세로 비율 맞춤
 
 const categoryOptions = [
   { label: "관광", value: categoryMask.TOUR },
@@ -117,6 +128,7 @@ export default function HomeScreen() {
         장소 데이터, 버스 정류장 데이터, 경로 생성 알고리즘이 정상적으로 연결되는지 확인하는 임시 화면입니다.
       </Text>
 
+      {/* 1. 데이터 로딩 확인 카드가 위치합니다. */}
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>1. 데이터 로딩 확인</Text>
 
@@ -136,6 +148,7 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {/* 2. 사용자 입력값 설정단 (기존 코드 유지) */}
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>2. 사용자 입력값</Text>
 
@@ -281,6 +294,63 @@ export default function HomeScreen() {
           <Text style={styles.resultTitle}>{result.routeTitle}</Text>
           <Text style={styles.description}>{result.summary}</Text>
 
+          {/* 📍 [추가] 약도 연동 시각화 맵 엔진 컨테이너 */}
+          <Text style={styles.sectionSubTitle}>🗺️ 추천 경로 시각화 지도</Text>
+          <View style={[styles.visualMapContainer, { width: MAP_WIDTH, height: MAP_HEIGHT }]}>
+            <Image source={andongMapImage} style={styles.visualMapImage} resizeMode="cover" />
+
+            {/* 알고리즘 결과 동선을 SVG 점선으로 오버레이 렌더링 */}
+            <Svg style={StyleSheet.absoluteFill}>
+              {result.places.map((place, index) => {
+                if (index === result.places.length - 1) return null;
+                const nextPlace = result.places[index + 1];
+                
+                // 각 장소 데이터 객체 내부의 x, y 백분율 좌표(0~100) 추출 가공
+                // 만약 데이터에 x, y가 없다면 임시 대체 수식 적용
+                const x1 = ((place.x ?? (20 + index * 20)) / 100) * MAP_WIDTH;
+                const y1 = ((place.y ?? (35 + (index % 2) * 20)) / 100) * MAP_HEIGHT;
+                const x2 = ((nextPlace.x ?? (20 + (index + 1) * 20)) / 100) * MAP_WIDTH;
+                const y2 = ((nextPlace.y ?? (35 + ((index + 1) % 2) * 20)) / 100) * MAP_HEIGHT;
+
+                return (
+                  <Line
+                    key={`vis-line-${place.id}`}
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke="#FF5A5F"
+                    strokeWidth="4"
+                    strokeDasharray="6, 6"
+                  />
+                );
+              })}
+            </Svg>
+
+            {/* 각 장소 마커 오버레이 배정 */}
+            {result.places.map((place, index) => {
+              const markerLeft = ((place.x ?? (20 + index * 20)) / 100) * MAP_WIDTH;
+              const markerTop = ((place.y ?? (35 + (index % 2) * 20)) / 100) * MAP_HEIGHT;
+
+              return (
+                <View 
+                  key={`vis-marker-${place.id}`} 
+                  style={[styles.visualMarkerWrapper, { left: markerLeft, top: markerTop }]}
+                >
+                  <View style={styles.visualMarkerCircle}>
+                    <Text style={styles.visualMarkerText}>{index + 1}</Text>
+                  </View>
+                  <View style={styles.visualNameTag}>
+                    <Text style={styles.visualNameTagText} numberOfLines={1}>
+                      {place.name}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          {/* 기존 소요 시간 요약 레이아웃 */}
           <View style={styles.row}>
             <Text style={styles.label}>총 소요 시간</Text>
             <Text style={styles.value}>{result.timeSummary.totalTime}분</Text>
@@ -341,7 +411,7 @@ export default function HomeScreen() {
                 체류 시간: {place.averageTime}분
               </Text>
               <Text style={styles.summaryText}>
-                가까운 정류장: {getBusStopName(place.nearestBusStopId)}
+                가장 가까운 정류장: {getBusStopName(place.nearestBusStopId)}
               </Text>
 
               {place.reasons.length > 0 ? (
@@ -608,6 +678,62 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     color: "#B91C1C",
+    fontWeight: "700",
+  },
+  
+  // 📍 [추가] 시각화 그래픽 엔진용 스타일 셋업
+  visualMapContainer: {
+    position: "relative",
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: "#E5E7EB",
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+  },
+  visualMapImage: {
+    width: "100%",
+    height: "100%",
+  },
+  visualMarkerWrapper: {
+    position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 80,
+    height: 50,
+    marginLeft: -40, // 앵커 중심 정렬 연산
+    marginTop: -25,
+  },
+  visualMarkerCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#FF5A5F",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 4,
+  },
+  visualMarkerText: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+    fontSize: 11,
+  },
+  visualNameTag: {
+    marginTop: 3,
+    backgroundColor: "rgba(17, 24, 39, 0.85)",
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 4,
+  },
+  visualNameTagText: {
+    color: "#FFFFFF",
+    fontSize: 9,
     fontWeight: "700",
   },
 });
