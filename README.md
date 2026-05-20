@@ -21,6 +21,7 @@
 ## 프로젝트 관리 링크
 
 - [자유 토론 / 아이디어 Discussions](https://github.com/2BSame/travel-route-app/discussions)
+- [팀 프로젝트 현황 점검-1차](docs/project-status-report.md)
 
 ## 팀원 작업 방식
 
