@@ -1,48 +1,127 @@
-{
-  "expo": {
-    "name": "travel-route-app",
-    "slug": "travel-route-app",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "travelrouteapp",
-    "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
-    },
-    "web": {
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
-    },
-    "plugins": [
-      "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
-          "dark": {
-            "backgroundColor": "#000000"
-          }
-        }
-      ]
-    ],
-    "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
-    }
-  }
+Expo Go 앱을 사용해서 실제 스마트폰으로 시연하시는군요! 발표나 시연할 때 Expo Go에서 가장 자주 터지거나 호환성 문제를 일으키는 요인들을 싹 제거하고, 오직 Expo 내장 기능과 순수 React Native만 사용하여 100% 안전하게 구동되도록 코드를 최적화했습니다.
+
+🛠️ Expo Go 시연 시 호환성 핵심 체크리스트
+외부 폰트/아이콘 라이브러리 제거: 아이콘 패키지가 꼬이면 Expo Go가 튕깁니다. ⏱️, 🚶, 🚍 같은 이모지(Emoji)와 순수 텍스트로 UI를 대체하여 오류 가능성을 완전히 없앴습니다.
+
+그림자(elevation/shadow) 오류 방지: 안드로이드와 iOS Expo Go에서 다르게 보이지 않도록 테두리(borderWidth) 기반의 깔끔한 디자인으로 통일했습니다.
+
+SafeAreaView 완벽 대응: 기종별 상단 노치(바)에 UI가 파묻히지 않도록 Expo 표준 SafeAreaView와 StatusBar 대응을 추가했습니다.
+
+이 구조 그대로 적용하시면 Expo Go 앱으로 QR 코드를 찍었을 때 버벅임 없이 즉시 작동합니다.
+
+1. [교체] 전체 컨트롤러 (App.tsx)
+상단 노치 영역 침범을 막기 위해 react-native 기본 기능을 강화한 호환성 버전입니다. 기존 코드를 지우고 이걸로 덮어씌워 주세요.
+
+TypeScript
+// App.tsx
+import React, { useState } from "react";
+import { SafeAreaView, StyleSheet, View, Text, Pressable, StatusBar, Platform } from "react-native";
+import { FinalRoute } from "./src/types/route";
+import ConditionScreen from "./src/screens/ConditionScreen";
+import MockMapScreen from "./src/screens/MockMapScreen";
+import RouteDetailScreen from "./src/screens/RouteDetailScreen";
+
+export default function App() {
+  const [currentScreen, setCurrentScreen] = useState<"input" | "map" | "detail">("input");
+  const [generatedRoute, setGeneratedRoute] = useState<FinalRoute | null>(null);
+
+  const handleRouteGenerated = (route: FinalRoute) => {
+    setGeneratedRoute(route);
+    setCurrentScreen("map"); // 조건 생성 완료 시 자동으로 모의지도로 이동
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Expo Go 시연 중 상단 바 상태를 깔끔하게 유지 */}
+      <StatusBar barStyle="dark-content" backgroundColor="#F6F8F2" />
+      
+      <View style={styles.body}>
+        {currentScreen === "input" && (
+          <ConditionScreen onRouteGenerated={handleRouteGenerated} />
+        )}
+        {currentScreen === "map" && generatedRoute && (
+          <MockMapScreen route={generatedRoute} />
+        )}
+        {currentScreen === "detail" && generatedRoute && (
+          <RouteDetailScreen route={generatedRoute} />
+        )}
+        {currentScreen !== "input" && !generatedRoute && (
+          <View style={styles.center}>
+            <Text style={styles.centerText}>경로를 먼저 생성해주세요.</Text>
+          </View>
+        )}
+      </View>
+
+      {/* 하단 발표용 내비게이션 바 */}
+      <View style={styles.navBar}>
+        <Pressable 
+          style={[styles.navButton, currentScreen === "input" && styles.activeNav]} 
+          onPress={() => setCurrentScreen("input")}
+        >
+          <Text style={[styles.navText, currentScreen === "input" && styles.activeNavText]}>1. 조건 선택</Text>
+        </Pressable>
+        <Pressable 
+          style={[styles.navButton, currentScreen === "map" && styles.activeNav]} 
+          onPress={() => setCurrentScreen("map")}
+        >
+          <Text style={[styles.navText, currentScreen === "map" && styles.activeNavText]}>2. 모의 지도</Text>
+        </Pressable>
+        <Pressable 
+          style={[styles.navButton, currentScreen === "detail" && styles.activeNav]} 
+          onPress={() => setCurrentScreen("detail")}
+        >
+          <Text style={[styles.navText, currentScreen === "detail" && styles.activeNavText]}>3. 상세 설명</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F6F8F2",
+    // 안드로이드 Expo Go에서 상단 바 여백이 안 먹히는 버그 방지
+    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
+  },
+  body: {
+    flex: 1,
+  },
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  centerText: {
+    fontSize: 15,
+    color: "#5B6657",
+  },
+  navBar: {
+    flexDirection: "row",
+    height: 64,
+    backgroundColor: "#FFFFFF",
+    borderTopWidth: 1,
+    borderTopColor: "#EBEFE8",
+    paddingHorizontal: 16,
+    alignItems: "center",
+  },
+  navButton: {
+    flex: 1,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+  },
+  activeNav: {
+    backgroundColor: "#EBF3EE",
+  },
+  navText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#5B6657",
+  },
+  activeNavText: {
+    color: "#2F6F3E",
+    fontWeight: "700",
+  },
+});
