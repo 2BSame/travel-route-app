@@ -18,7 +18,7 @@ import type { FinalRoute } from "../../src/types/route";
 import type { UserRouteInput } from "../../src/types/userInput";
 
 // 📍 [추가] assets/images 폴더의 안동 약도를 불러옵니다.
-const andongMapImage = require("../../assets/images/안동시내 약도.PNG");
+const andongMapImage = require("../../assets/images/andong_map.png");
 
 // 📍 [추가] 시각화 가로 폭 계산 (화면 여백 제외 크기)
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
