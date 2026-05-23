@@ -20,7 +20,7 @@ export default function MockMapView({ result }: MockMapViewProps) {
       
       {/* 1. 지도를 배경으로 사용하는 컨테이너 */}
       <ImageBackground 
-        source={require("@/assets/images/안동시내_약도.png")} // 프로젝트 내 실제 이미지 파일 경로에 맞게 수정해 주세요.
+        source={require("@/assets/images/andong_map.png")} // 프로젝트 내 실제 이미지 파일 경로에 맞게 수정해 주세요.
         style={styles.mapBackground}
         imageStyle={styles.mapImageStyle}
       >
