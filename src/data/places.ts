@@ -64,8 +64,6 @@ export const places: Place[] = [
     averageTime: 45,
     latitude: 36.5669166,
     longitude: 128.6993119,
-    x: 10,
-    y: 40,
     nearestBusStopId: 4,
     description: "매콤달콤한 떡볶이 전문점."
   },
