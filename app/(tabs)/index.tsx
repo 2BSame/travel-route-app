@@ -1,1210 +1,1370 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState } from 'react';
 import {
-  ImageBackground,
-  Pressable,
+  Dimensions,
+  Image,
+  SafeAreaView,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
-  View,
-} from "react-native";
+  TouchableOpacity,
+  View
+} from 'react-native';
+import Svg, { Polyline } from 'react-native-svg';
 
-import { createRoute } from "../../src/algorithms/routeMaker";
-import { busStops } from "../../src/data/busStop";
-import { places } from "../../src/data/places";
-import { categoryMask, themeMask } from "../../src/types/place";
-
-import type { Place } from "../../src/types/place";
-import type { FinalRoute } from "../../src/types/route";
-import type { UserRouteInput } from "../../src/types/userInput";
-
-const andongMapImage = require("../../assets/images/andong_map.png");
-
-type Step = "input" | "map" | "detail";
-
-type Option = {
-  label: string;
-  value: number;
-};
-
-type MapPoint = {
-  id: string;
-  name: string;
-  latitude: number;
-  longitude: number;
-  type: "start" | "place" | "end";
-  order?: number;
-};
-
-const categoryOptions: Option[] = [
-  { label: "관광", value: categoryMask.TOUR },
-  { label: "먹거리", value: categoryMask.FOOD },
-  { label: "카페", value: categoryMask.CAFE },
-  { label: "문화", value: categoryMask.CULTURE },
-];
-
-const themeOptions: Option[] = [
-  { label: "감성", value: themeMask.MOOD },
-  { label: "먹거리", value: themeMask.FOOD },
-  { label: "자연", value: themeMask.NATURE },
-  { label: "조용한", value: themeMask.QUIET },
-  { label: "문화", value: themeMask.CULTURE },
-];
-
-const startTimeOptions = ["09:00", "10:00", "11:00", "13:00", "15:00"];
-const timeLimitOptions = [120, 180, 240, 300, 420];
-const maxPlaceOptions = [2, 3, 4, 5];
-
-const DEFAULT_INPUT: UserRouteInput = {
-  startTime: "10:00",
-  totalAvailableTime: 300,
-  themes: themeMask.MOOD | themeMask.FOOD,
-  categories: categoryMask.TOUR | categoryMask.FOOD | categoryMask.CAFE,
-  mealRequired: true,
-  maxPlaceCount: 4,
-  startBusStopId: 7, // 국립경국대
-  endBusStopId: 7, // 국립경국대 복귀
-};
-
-export default function HomeScreen() {
-  const [step, setStep] = useState<Step>("input");
-  const [input, setInput] = useState<UserRouteInput>(DEFAULT_INPUT);
-  const [result, setResult] = useState<FinalRoute | null>(null);
-  const [errorMessage, setErrorMessage] = useState("");
-
-  const matchedPlaceCount = useMemo(() => {
-    return places.filter((place) => {
-      const categoryMatched =
-        input.categories === 0 || (place.categories & input.categories) !== 0;
-      const themeMatched =
-        input.themes === 0 || (place.themes & input.themes) !== 0;
-
-      return categoryMatched && themeMatched;
-    }).length;
-  }, [input.categories, input.themes]);
-
-  const toggleMask = (field: "categories" | "themes", value: number) => {
-    setInput((prev) => ({
-      ...prev,
-      [field]:
-        (prev[field] & value) !== 0
-          ? prev[field] & ~value
-          : prev[field] | value,
-    }));
-  };
-
-  const runRouteAlgorithm = () => {
-    try {
-      setErrorMessage("");
-
-      const route = createRoute(input);
-
-      setResult(route);
-      setStep("map");
-    } catch (error) {
-      setResult(null);
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "알 수 없는 오류가 발생했습니다."
-      );
-    }
-  };
-
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.kicker}>Andong Travel Route</Text>
-        <Text style={styles.title}>안동 여행 루트 자동 생성</Text>
-        <Text style={styles.description}>
-          UI 입력값 → 데이터 필터링 → 알고리즘 실행 → 모의지도/경로 설명까지
-          한 화면에서 연결한 통합 index 화면입니다.
-        </Text>
-      </View>
-
-      <StepTabs step={step} setStep={setStep} hasResult={result !== null} />
-
-      {step === "input" && (
-        <InputSection
-          input={input}
-          setInput={setInput}
-          matchedPlaceCount={matchedPlaceCount}
-          toggleMask={toggleMask}
-          runRouteAlgorithm={runRouteAlgorithm}
-          errorMessage={errorMessage}
-        />
-      )}
-
-      {step === "map" && (
-        <MapSection
-          input={input}
-          result={result}
-          goToInput={() => setStep("input")}
-          goToDetail={() => setStep("detail")}
-        />
-      )}
-
-      {step === "detail" && (
-        <DetailSection
-          input={input}
-          result={result}
-          goToInput={() => setStep("input")}
-          goToMap={() => setStep("map")}
-        />
-      )}
-    </ScrollView>
-  );
+// ============================================================================
+// 1. TYPE DEFINITIONS & MOCK DATA
+// ============================================================================
+interface BusSchedule {
+  fromBusStopId: number;
+  toBusStopId: number;
+  busNumber: string;
+  estimatedMinutes: number;
+  departureTimes: string[];
 }
 
-function StepTabs({
-  step,
-  setStep,
-  hasResult,
-}: {
-  step: Step;
-  setStep: (step: Step) => void;
-  hasResult: boolean;
-}) {
-  const tabs: { label: string; value: Step; disabled?: boolean }[] = [
-    { label: "1. 입력", value: "input" },
-    { label: "2. 지도", value: "map", disabled: !hasResult },
-    { label: "3. 설명", value: "detail", disabled: !hasResult },
+interface BusStop {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+}
+
+interface Place {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+  category: string;
+  categoryBit: number;
+  themeBit: number;
+  duration: number;
+  type: 'normal' | 'active' | 'target';
+  description: string;
+  nearestBusStopId: number;
+}
+
+interface NextBusInfo {
+  busNumber: string;
+  fromBusStopId: number;
+  toBusStopId: number;
+  departureTime: string;
+  waitTime: number;
+  rideTime: number;
+  arrivalTime: string;
+}
+
+interface TimelinePlace extends Place {
+  startTimeStr: string;
+  endTimeStr: string;
+  walkFromPrevMinutes: number;
+}
+
+interface RouteMapPoint {
+  key: string;
+  name: string;
+  x: number;
+  y: number;
+  kind: 'bus' | 'place';
+  placeType?: Place['type'];
+}
+
+interface GeneratedPlan {
+  places: Place[];
+  timelineRoute: TimelinePlace[];
+  routeMapPoints: RouteMapPoint[];
+  startStop: BusStop;
+  endStop: BusStop;
+  outboundBus: NextBusInfo | null;
+  returnBus: NextBusInfo | null;
+  selectedStartTime: string;
+  selectedDurationLabel: string;
+  selectedOkdongMinutes: number;
+  okdongStartTime: string;
+  okdongEndTime: string;
+  actualEndTime: string;
+  okdongUsedMinutes: number;
+  okdongRemainMinutes: number;
+  extraMinutes: number;
+  totalMinutes: number;
+  returnWalkMinutes: number;
+}
+
+const okdongMapImage = require('../../assets/images/okdong_mock_map.png');
+
+const themeMask = {
+  EMOTION: 1 << 0,
+  FOOD: 1 << 1,
+  NATURE: 1 << 2,
+  QUIET: 1 << 3,
+  CULTURE: 1 << 4
+};
+
+const categoryMask = {
+  CAFE: 1 << 0,
+  FOOD: 1 << 1,
+  DESSERT: 1 << 2,
+  BAKERY: 1 << 3,
+  SHOPPING: 1 << 4,
+  CONVENIENCE: 1 << 5,
+  CULTURE: 1 << 6,
+  NATURE: 1 << 7,
+  SPORT: 1 << 8,
+  EMOTION: 1 << 9
+};
+
+const THEME_BIT_MAP: Record<string, number> = {
+  '감성': themeMask.EMOTION,
+  '먹거리': themeMask.FOOD,
+  '자연': themeMask.NATURE,
+  '조용한': themeMask.QUIET,
+  '문화': themeMask.CULTURE
+};
+
+const SCHOOL_STOP_ID = 0;
+
+const OKDONG_BUS_STOPS: BusStop[] = [
+  { id: 1, name: '옥동 상가거리 정류장', x: 50, y: 63 },
+  { id: 2, name: '복주초 앞 정류장', x: 62, y: 84 },
+  { id: 3, name: '옥동 북측 정류장', x: 22, y: 38 }
+];
+
+const SCHOOL_STOP: BusStop = { id: SCHOOL_STOP_ID, name: '경국대 정류장', x: 0, y: 0 };
+
+const outboundDepartures = [
+  '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+  '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00'
+];
+
+const outboundDeparturesOffset = [
+  '09:15', '09:45', '10:15', '10:45', '11:15', '11:45',
+  '12:15', '12:45', '13:15', '13:45', '14:15', '14:45', '15:15', '15:45', '16:15'
+];
+
+const returnDepartures = [
+  '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
+  '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
+  '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00'
+];
+
+const returnDeparturesOffset = [
+  '10:15', '10:45', '11:15', '11:45', '12:15', '12:45',
+  '13:15', '13:45', '14:15', '14:45', '15:15', '15:45',
+  '16:15', '16:45', '17:15', '17:45', '18:15', '18:45', '19:15'
+];
+
+const busSchedules: BusSchedule[] = [
+  { fromBusStopId: SCHOOL_STOP_ID, toBusStopId: 1, busNumber: '110', estimatedMinutes: 18, departureTimes: outboundDepartures },
+  { fromBusStopId: SCHOOL_STOP_ID, toBusStopId: 2, busNumber: '210', estimatedMinutes: 23, departureTimes: outboundDeparturesOffset },
+  { fromBusStopId: SCHOOL_STOP_ID, toBusStopId: 3, busNumber: '110', estimatedMinutes: 20, departureTimes: outboundDepartures },
+
+  { fromBusStopId: 1, toBusStopId: SCHOOL_STOP_ID, busNumber: '110', estimatedMinutes: 18, departureTimes: returnDepartures },
+  { fromBusStopId: 2, toBusStopId: SCHOOL_STOP_ID, busNumber: '210', estimatedMinutes: 23, departureTimes: returnDeparturesOffset },
+  { fromBusStopId: 3, toBusStopId: SCHOOL_STOP_ID, busNumber: '110', estimatedMinutes: 20, departureTimes: returnDepartures }
+];
+
+const PLACES_DATA: Place[] = [
+  { id: 1, name: '스타벅스 안동점', x: 33, y: 43, category: '카페', categoryBit: categoryMask.CAFE, themeBit: themeMask.EMOTION | themeMask.QUIET, duration: 30, type: 'normal', description: '상가거리 초입에 가까워 옥동 루트의 시작 지점으로 쓰기 좋습니다.', nearestBusStopId: 3 },
+  { id: 2, name: '이디야커피 안동옥동점', x: 38, y: 45, category: '카페', categoryBit: categoryMask.CAFE, themeBit: themeMask.QUIET, duration: 25, type: 'normal', description: '가볍게 음료를 마시며 다음 장소로 이동하기 좋은 카페입니다.', nearestBusStopId: 1 },
+  { id: 3, name: '투썸플레이스 안동옥동점', x: 18, y: 11, category: '카페', categoryBit: categoryMask.CAFE, themeBit: themeMask.EMOTION, duration: 40, type: 'normal', description: '지도 북서쪽 상권에 위치한 여유로운 디저트 카페입니다.', nearestBusStopId: 3 },
+  { id: 4, name: '컴포즈커피 옥동점', x: 44, y: 52, category: '카페', categoryBit: categoryMask.CAFE, themeBit: themeMask.QUIET, duration: 20, type: 'normal', description: '짧은 동선 중간에 넣기 좋은 가성비 카페입니다.', nearestBusStopId: 1 },
+  { id: 5, name: '설빙 안동옥동점', x: 57, y: 56, category: '디저트', categoryBit: categoryMask.DESSERT, themeBit: themeMask.FOOD | themeMask.EMOTION, duration: 45, type: 'normal', description: '디저트 중심 루트에서 체류 시간을 충분히 줄 수 있는 장소입니다.', nearestBusStopId: 1 },
+  { id: 6, name: '죠스떡볶이 안동옥동점', x: 41, y: 48, category: '먹거리', categoryBit: categoryMask.FOOD, themeBit: themeMask.FOOD, duration: 30, type: 'normal', description: '상가거리 중심부의 분식 장소로 먹거리 루트와 잘 맞습니다.', nearestBusStopId: 1 },
+  { id: 7, name: '교촌치킨 옥동점', x: 47, y: 50, category: '먹거리', categoryBit: categoryMask.FOOD, themeBit: themeMask.FOOD, duration: 60, type: 'normal', description: '식사 시간이 긴 루트에서 메인 식사 장소로 활용할 수 있습니다.', nearestBusStopId: 1 },
+  { id: 8, name: 'BBQ치킨 옥동점', x: 68, y: 60, category: '먹거리', categoryBit: categoryMask.FOOD, themeBit: themeMask.FOOD, duration: 55, type: 'normal', description: '상권 동쪽에 위치한 식사 장소로 루트 후반에 배치하기 좋습니다.', nearestBusStopId: 1 },
+  { id: 9, name: '맘스터치 안동옥동점', x: 50, y: 58, category: '먹거리', categoryBit: categoryMask.FOOD, themeBit: themeMask.FOOD, duration: 30, type: 'normal', description: '짧은 식사 시간으로도 일정에 넣기 쉬운 패스트푸드 지점입니다.', nearestBusStopId: 1 },
+  { id: 10, name: '롯데리아 옥동점', x: 38, y: 62, category: '먹거리', categoryBit: categoryMask.FOOD, themeBit: themeMask.FOOD, duration: 25, type: 'normal', description: '중앙 도보 동선과 가까워 빠르게 식사하기 좋은 장소입니다.', nearestBusStopId: 1 },
+  { id: 11, name: '올리브영 안동옥동점', x: 66, y: 58, category: '쇼핑', categoryBit: categoryMask.SHOPPING, themeBit: themeMask.CULTURE, duration: 20, type: 'normal', description: '쇼핑과 구경 요소를 넣고 싶을 때 적합한 지점입니다.', nearestBusStopId: 1 },
+  { id: 12, name: '다이소 안동옥동점', x: 74, y: 58, category: '쇼핑', categoryBit: categoryMask.SHOPPING, themeBit: themeMask.CULTURE, duration: 35, type: 'normal', description: '생활용품 구경과 쇼핑 시간을 반영하기 좋은 장소입니다.', nearestBusStopId: 1 },
+  { id: 13, name: '옥동 복주1길 상가거리', x: 43, y: 47, category: '문화/상권', categoryBit: categoryMask.CULTURE, themeBit: themeMask.CULTURE | themeMask.FOOD, duration: 50, type: 'active', description: '옥동 상권의 중심 동선으로 먹거리와 구경 요소를 함께 제공합니다.', nearestBusStopId: 1 },
+  { id: 14, name: '옥동 제2공원', x: 54, y: 22, category: '자연', categoryBit: categoryMask.NATURE, themeBit: themeMask.NATURE | themeMask.QUIET, duration: 30, type: 'normal', description: '상권 위쪽의 녹지 구역으로 조용한 산책 테마와 어울립니다.', nearestBusStopId: 3 },
+  { id: 15, name: '중앙도서관', x: 64, y: 75, category: '문화/상권', categoryBit: categoryMask.CULTURE, themeBit: themeMask.CULTURE | themeMask.QUIET, duration: 40, type: 'normal', description: '조용한 문화 루트에서 휴식형 장소로 배치할 수 있습니다.', nearestBusStopId: 2 },
+  { id: 16, name: 'GS25 옥동희망점', x: 31, y: 42, category: '편의점', categoryBit: categoryMask.CONVENIENCE, themeBit: themeMask.QUIET, duration: 15, type: 'normal', description: '동선 초반 간식이나 음료를 보충하기 좋은 편의점입니다.', nearestBusStopId: 3 },
+  { id: 17, name: 'CU 옥동효성점', x: 24, y: 62, category: '편의점', categoryBit: categoryMask.CONVENIENCE, themeBit: themeMask.QUIET, duration: 10, type: 'normal', description: '서쪽 골목 동선에 배치하기 좋은 짧은 체류 장소입니다.', nearestBusStopId: 3 },
+  { id: 18, name: '파리바게뜨 옥동점', x: 47, y: 45, category: '베이커리', categoryBit: categoryMask.BAKERY, themeBit: themeMask.FOOD, duration: 25, type: 'normal', description: '간식 루트에서 자연스럽게 연결되는 베이커리 장소입니다.', nearestBusStopId: 1 },
+  { id: 19, name: '베스킨라빈스 옥동점', x: 36, y: 80, category: '디저트', categoryBit: categoryMask.DESSERT, themeBit: themeMask.FOOD | themeMask.EMOTION, duration: 20, type: 'normal', description: '루트 후반에 짧게 들르기 좋은 디저트 지점입니다.', nearestBusStopId: 2 },
+  { id: 20, name: '할리스커피', x: 70, y: 82, category: '카페', categoryBit: categoryMask.CAFE, themeBit: themeMask.EMOTION | themeMask.QUIET, duration: 45, type: 'normal', description: '동남쪽 구역의 여유로운 카페 체류 장소입니다.', nearestBusStopId: 2 },
+  { id: 21, name: '롯데시네마 안동점', x: 49, y: 70, category: '문화', categoryBit: categoryMask.CULTURE, themeBit: themeMask.CULTURE, duration: 120, type: 'target', description: '문화 테마의 긴 체류 목적지로 사용할 수 있는 장소입니다.', nearestBusStopId: 2 },
+  { id: 22, name: '마라감성', x: 22, y: 48, category: '먹거리', categoryBit: categoryMask.FOOD, themeBit: themeMask.FOOD, duration: 40, type: 'normal', description: '서쪽 골목 상권의 식사 후보로 먹거리 테마와 잘 맞습니다.', nearestBusStopId: 3 },
+  { id: 23, name: '옥동 감성주점 달빛한잔', x: 70, y: 49, category: '감성', categoryBit: categoryMask.EMOTION, themeBit: themeMask.EMOTION, duration: 90, type: 'normal', description: '감성 분위기 테마에서 루트의 개성을 만들어 주는 장소입니다.', nearestBusStopId: 1 },
+  { id: 24, name: '바디핏 헬스장 옥동점', x: 9, y: 63, category: '스포츠', categoryBit: categoryMask.SPORT, themeBit: themeMask.CULTURE, duration: 60, type: 'normal', description: '활동형 루트에 넣을 수 있는 스포츠 지점입니다.', nearestBusStopId: 3 },
+  { id: 25, name: '옥동 복주초등학교 앞 골목상권', x: 28, y: 72, category: '문화/상권', categoryBit: categoryMask.CULTURE, themeBit: themeMask.CULTURE, duration: 40, type: 'normal', description: '복주초 인근의 작은 골목 상권을 둘러보는 장소입니다.', nearestBusStopId: 2 }
+];
+
+// ============================================================================
+// 2. TIME UTILS & ROUTING ALGORITHM
+// ============================================================================
+function timeToMinutes(timeStr: string): number {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+function minutesToTime(totalMinutes: number): string {
+  const hours = Math.floor(totalMinutes / 60) % 24;
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function diffMinutes(fromTime: string, toTime: string): number {
+  return Math.max(0, timeToMinutes(toTime) - timeToMinutes(fromTime));
+}
+
+function getBusStopName(stopId: number): string {
+  if (stopId === SCHOOL_STOP_ID) return SCHOOL_STOP.name;
+  return OKDONG_BUS_STOPS.find(stop => stop.id === stopId)?.name || `정류장 ${stopId}`;
+}
+
+function findNextDirectBus(fromStopId: number, toStopId: number, currentTime: string): NextBusInfo | null {
+  if (fromStopId === toStopId) return null;
+
+  const schedules = busSchedules.filter(s => s.fromBusStopId === fromStopId && s.toBusStopId === toStopId);
+  if (schedules.length === 0) return null;
+
+  const currentMins = timeToMinutes(currentTime);
+  let best: NextBusInfo | null = null;
+
+  for (const schedule of schedules) {
+    for (const departureTime of schedule.departureTimes) {
+      const departureMins = timeToMinutes(departureTime);
+      const waitTime = departureMins - currentMins;
+
+      if (waitTime < 0) continue;
+
+      const candidate: NextBusInfo = {
+        busNumber: schedule.busNumber,
+        fromBusStopId: fromStopId,
+        toBusStopId: toStopId,
+        departureTime,
+        waitTime,
+        rideTime: schedule.estimatedMinutes,
+        arrivalTime: minutesToTime(departureMins + schedule.estimatedMinutes)
+      };
+
+      if (!best || candidate.waitTime < best.waitTime) {
+        best = candidate;
+      }
+    }
+  }
+
+  return best;
+}
+
+function getWalkMinutes(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  const dx = (a.x - b.x) * 1.1;
+  const dy = a.y - b.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  return Math.max(2, Math.ceil(distance * 0.45));
+}
+
+function getNearestBusStop(point: { x: number; y: number }): BusStop {
+  return OKDONG_BUS_STOPS.reduce((best, stop) => {
+    const bestWalk = getWalkMinutes(point, best);
+    const currentWalk = getWalkMinutes(point, stop);
+    return currentWalk < bestWalk ? stop : best;
+  }, OKDONG_BUS_STOPS[0]);
+}
+
+function parseDurationToMinutes(durationLabel: string): number {
+  const timeMap: Record<string, number> = {
+    '2시간': 120,
+    '3시간': 180,
+    '4시간': 240,
+    '반나절': 360
+  };
+  return timeMap[durationLabel] || 180;
+}
+
+function filterPlacePool(userTheme: string, mealOption: string): Place[] {
+  return PLACES_DATA.filter(place => {
+    if (mealOption === '카페만') return ['카페', '디저트', '베이커리'].includes(place.category);
+    if (mealOption === '관광지만') return ['자연', '문화', '쇼핑', '문화/상권', '스포츠', '감성'].includes(place.category);
+    return true;
+  }).sort((a, b) => {
+    const themeBit = THEME_BIT_MAP[userTheme] || 0;
+    const aTheme = (a.themeBit & themeBit) !== 0 ? 1 : 0;
+    const bTheme = (b.themeBit & themeBit) !== 0 ? 1 : 0;
+    return bTheme - aTheme;
+  });
+}
+
+function buildOkdongRoute(userTheme: string, mealOption: string, maxOkdongMinutes: number) {
+  const targetThemeBit = THEME_BIT_MAP[userTheme] || 0;
+  const startStop = OKDONG_BUS_STOPS[0];
+  const route: Place[] = [];
+  const pool = filterPlacePool(userTheme, mealOption);
+
+  let currentPoint: { x: number; y: number } = startStop;
+  let usedMinutes = 0;
+  const usedPlaceIds = new Set<number>();
+
+  while (route.length < 8) {
+    let bestPlace: Place | null = null;
+    let bestScore = -Infinity;
+    let bestProjectedUsed = usedMinutes;
+
+    for (const place of pool) {
+      if (usedPlaceIds.has(place.id)) continue;
+
+      const walkToPlace = getWalkMinutes(currentPoint, place);
+      const endStopForThisPlace = getNearestBusStop(place);
+      const returnWalkReserve = getWalkMinutes(place, endStopForThisPlace);
+      const projectedUsed = usedMinutes + walkToPlace + place.duration;
+
+      if (projectedUsed + returnWalkReserve > maxOkdongMinutes) continue;
+
+      const distancePenalty = walkToPlace * 3;
+      let score = 100 - distancePenalty;
+      if ((place.themeBit & targetThemeBit) !== 0) score += 130;
+      if (mealOption === '식사 포함' && place.category === '먹거리') score += 45;
+      if (place.type === 'active') score += 30;
+      if (place.duration <= 30) score += 12;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestPlace = place;
+        bestProjectedUsed = projectedUsed;
+      }
+    }
+
+    if (!bestPlace) break;
+
+    route.push(bestPlace);
+    usedPlaceIds.add(bestPlace.id);
+    usedMinutes = bestProjectedUsed;
+    currentPoint = bestPlace;
+  }
+
+  const endStop = route.length > 0 ? getNearestBusStop(route[route.length - 1]) : startStop;
+  const returnWalkMinutes = route.length > 0 ? getWalkMinutes(route[route.length - 1], endStop) : 0;
+  const okdongUsedMinutes = usedMinutes + returnWalkMinutes;
+
+  return { route, startStop, endStop, returnWalkMinutes, okdongUsedMinutes };
+}
+
+function buildGeneratedPlan(
+  userTheme: string,
+  mealOption: string,
+  durationLabel: string,
+  selectedStartTime: string
+): GeneratedPlan {
+  const selectedOkdongMinutes = parseDurationToMinutes(durationLabel);
+  const coreRoute = buildOkdongRoute(userTheme, mealOption, selectedOkdongMinutes);
+  const outboundBus = findNextDirectBus(SCHOOL_STOP_ID, coreRoute.startStop.id, selectedStartTime);
+  const okdongStartTime = outboundBus?.arrivalTime || selectedStartTime;
+
+  let currentMins = timeToMinutes(okdongStartTime);
+  let currentPoint: { x: number; y: number } = coreRoute.startStop;
+
+  const timelineRoute: TimelinePlace[] = coreRoute.route.map(place => {
+    const walkFromPrevMinutes = getWalkMinutes(currentPoint, place);
+    currentMins += walkFromPrevMinutes;
+    const startTimeStr = minutesToTime(currentMins);
+    currentMins += place.duration;
+    const endTimeStr = minutesToTime(currentMins);
+    currentPoint = place;
+
+    return {
+      ...place,
+      startTimeStr,
+      endTimeStr,
+      walkFromPrevMinutes
+    };
+  });
+
+  const okdongEndMins = currentMins + coreRoute.returnWalkMinutes;
+  const okdongEndTime = minutesToTime(okdongEndMins);
+  const returnBus = findNextDirectBus(coreRoute.endStop.id, SCHOOL_STOP_ID, okdongEndTime);
+  const actualEndTime = returnBus?.arrivalTime || okdongEndTime;
+
+  const outboundExtra = outboundBus ? outboundBus.waitTime + outboundBus.rideTime : 0;
+  const returnExtra = returnBus ? returnBus.waitTime + returnBus.rideTime : 0;
+  const extraMinutes = outboundExtra + returnExtra;
+  const totalMinutes = diffMinutes(selectedStartTime, actualEndTime);
+  const okdongUsedMinutes = diffMinutes(okdongStartTime, okdongEndTime);
+  const okdongRemainMinutes = selectedOkdongMinutes - okdongUsedMinutes;
+
+  const endPoint = coreRoute.endStop.id === coreRoute.startStop.id
+    ? { ...coreRoute.endStop, x: Math.min(coreRoute.endStop.x + 3, 96), y: Math.min(coreRoute.endStop.y + 3, 96) }
+    : coreRoute.endStop;
+
+  const routeMapPoints: RouteMapPoint[] = [
+    { key: `bus-start-${coreRoute.startStop.id}`, name: coreRoute.startStop.name, x: coreRoute.startStop.x, y: coreRoute.startStop.y, kind: 'bus' },
+    ...timelineRoute.map(place => ({
+      key: `place-${place.id}`,
+      name: place.name,
+      x: place.x,
+      y: place.y,
+      kind: 'place' as const,
+      placeType: place.type
+    })),
+    { key: `bus-end-${coreRoute.endStop.id}`, name: coreRoute.endStop.name, x: endPoint.x, y: endPoint.y, kind: 'bus' }
   ];
 
-  return (
-    <View style={styles.tabWrap}>
-      {tabs.map((tab) => (
-        <Pressable
-          key={tab.value}
-          disabled={tab.disabled}
-          onPress={() => setStep(tab.value)}
-          style={[
-            styles.tab,
-            step === tab.value && styles.activeTab,
-            tab.disabled && styles.disabledTab,
-          ]}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              step === tab.value && styles.activeTabText,
-              tab.disabled && styles.disabledTabText,
-            ]}
-          >
-            {tab.label}
-          </Text>
-        </Pressable>
-      ))}
+  return {
+    places: coreRoute.route,
+    timelineRoute,
+    routeMapPoints,
+    startStop: coreRoute.startStop,
+    endStop: coreRoute.endStop,
+    outboundBus,
+    returnBus,
+    selectedStartTime,
+    selectedDurationLabel: durationLabel,
+    selectedOkdongMinutes,
+    okdongStartTime,
+    okdongEndTime,
+    actualEndTime,
+    okdongUsedMinutes,
+    okdongRemainMinutes,
+    extraMinutes,
+    totalMinutes,
+    returnWalkMinutes: coreRoute.returnWalkMinutes
+  };
+}
+
+// 모바일 화면 넓이에 따른 커스텀 지도 좌표 매핑 계산
+const MAP_WIDTH = Dimensions.get('window').width - 72;
+const MAP_HEIGHT = 260;
+
+function getMapCoords(percentX: number, percentY: number) {
+  return {
+    x: (percentX / 100) * MAP_WIDTH,
+    y: (percentY / 100) * MAP_HEIGHT
+  };
+}
+
+// ============================================================================
+// 3. MAIN REACT NATIVE COMPONENT
+// ============================================================================
+export default function AndongTravelApp() {
+  const [activeTab, setActiveTab] = useState<string>('대기');
+  const [duration, setDuration] = useState<string>('3시간');
+  const [startTime, setStartTime] = useState<string>('10:00');
+  const [meal, setMeal] = useState<string>('식사 포함');
+  const [theme, setTheme] = useState<string>('먹거리');
+  const [selectedTag, setSelectedTag] = useState<string>('전체');
+  const [generatedPlan, setGeneratedPlan] = useState<GeneratedPlan | null>(null);
+  const [generatedMeal, setGeneratedMeal] = useState<string>('식사 포함');
+  const [generatedTheme, setGeneratedTheme] = useState<string>('먹거리');
+
+  const startTimes = ['09:00', '10:00', '11:00', '12:00', '13:00'];
+  const durations = ['2시간', '3시간', '4시간', '반나절'];
+  const meals = ['식사 포함', '카페만', '관광지만'];
+  const themes = ['감성', '먹거리', '자연', '조용한', '문화'];
+
+  const displayTime = activeTab === '입력' || activeTab === '대기'
+    ? startTime
+    : generatedPlan?.selectedStartTime || startTime;
+
+  const timelineRoute = generatedPlan?.timelineRoute || [];
+  const routeMapPoints = generatedPlan?.routeMapPoints || [];
+
+  const filteredCards = useMemo(() => {
+    if (selectedTag === '전체') return timelineRoute;
+    if (selectedTag === '쇼핑/편의') return timelineRoute.filter(p => p.category === '쇼핑' || p.category === '편의점');
+    return timelineRoute.filter(p => p.category === selectedTag);
+  }, [timelineRoute, selectedTag]);
+
+  const handleGenerateRoute = () => {
+    const plan = buildGeneratedPlan(theme, meal, duration, startTime);
+    setGeneratedPlan(plan);
+    setGeneratedMeal(meal);
+    setGeneratedTheme(theme);
+    setSelectedTag('전체');
+    setActiveTab('지도');
+  };
+
+  const renderEmptyState = (title: string, desc: string) => (
+    <View style={styles.emptyStateBox}>
+      <Text style={styles.emptyStateTitle}>{title}</Text>
+      <Text style={styles.emptyStateDesc}>{desc}</Text>
+      <TouchableOpacity onPress={() => setActiveTab('입력')} style={styles.emptyActionBtn}>
+        <Text style={styles.emptyActionText}>조건 선택하러 가기</Text>
+      </TouchableOpacity>
     </View>
   );
-}
-
-function InputSection({
-  input,
-  setInput,
-  matchedPlaceCount,
-  toggleMask,
-  runRouteAlgorithm,
-  errorMessage,
-}: {
-  input: UserRouteInput;
-  setInput: React.Dispatch<React.SetStateAction<UserRouteInput>>;
-  matchedPlaceCount: number;
-  toggleMask: (field: "categories" | "themes", value: number) => void;
-  runRouteAlgorithm: () => void;
-  errorMessage: string;
-}) {
-  return (
-    <>
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>데이터 연결 상태</Text>
-
-        <View style={styles.statsRow}>
-          <Stat label="장소 데이터" value={`${places.length}개`} />
-          <Stat label="정류장 데이터" value={`${busStops.length}개`} />
-          <Stat label="조건 일치" value={`${matchedPlaceCount}개`} />
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>사용자 조건 입력</Text>
-
-        <Text style={styles.groupLabel}>출발 시간</Text>
-        <ChipWrap>
-          {startTimeOptions.map((time) => (
-            <Chip
-              key={time}
-              label={time}
-              selected={input.startTime === time}
-              onPress={() =>
-                setInput((prev) => ({
-                  ...prev,
-                  startTime: time,
-                }))
-              }
-            />
-          ))}
-        </ChipWrap>
-
-        <Text style={styles.groupLabel}>사용 가능 시간</Text>
-        <ChipWrap>
-          {timeLimitOptions.map((minutes) => (
-            <Chip
-              key={minutes}
-              label={`${minutes}분`}
-              selected={input.totalAvailableTime === minutes}
-              onPress={() =>
-                setInput((prev) => ({
-                  ...prev,
-                  totalAvailableTime: minutes,
-                }))
-              }
-            />
-          ))}
-        </ChipWrap>
-
-        <Text style={styles.groupLabel}>최대 방문 장소 수</Text>
-        <ChipWrap>
-          {maxPlaceOptions.map((count) => (
-            <Chip
-              key={count}
-              label={`${count}곳`}
-              selected={input.maxPlaceCount === count}
-              onPress={() =>
-                setInput((prev) => ({
-                  ...prev,
-                  maxPlaceCount: count,
-                }))
-              }
-            />
-          ))}
-        </ChipWrap>
-
-        <Text style={styles.groupLabel}>카테고리</Text>
-        <ChipWrap>
-          {categoryOptions.map((option) => (
-            <Chip
-              key={option.label}
-              label={option.label}
-              selected={(input.categories & option.value) !== 0}
-              onPress={() => toggleMask("categories", option.value)}
-            />
-          ))}
-        </ChipWrap>
-
-        <Text style={styles.groupLabel}>테마</Text>
-        <ChipWrap>
-          {themeOptions.map((option) => (
-            <Chip
-              key={option.label}
-              label={option.label}
-              selected={(input.themes & option.value) !== 0}
-              onPress={() => toggleMask("themes", option.value)}
-            />
-          ))}
-        </ChipWrap>
-
-        <Text style={styles.groupLabel}>식사 포함 여부</Text>
-        <ChipWrap>
-          <Chip
-            label="식사 포함"
-            selected={input.mealRequired}
-            onPress={() =>
-              setInput((prev) => ({
-                ...prev,
-                mealRequired: true,
-              }))
-            }
-          />
-          <Chip
-            label="상관없음"
-            selected={!input.mealRequired}
-            onPress={() =>
-              setInput((prev) => ({
-                ...prev,
-                mealRequired: false,
-              }))
-            }
-          />
-        </ChipWrap>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>버스 시작/종료 정류장</Text>
-
-        <Text style={styles.groupLabel}>출발 정류장</Text>
-        <ChipWrap>
-          {busStops.map((stop) => (
-            <Chip
-              key={`start-${stop.id}`}
-              label={stop.name}
-              selected={input.startBusStopId === stop.id}
-              onPress={() =>
-                setInput((prev) => ({
-                  ...prev,
-                  startBusStopId: stop.id,
-                }))
-              }
-            />
-          ))}
-        </ChipWrap>
-
-        <Text style={styles.groupLabel}>복귀 정류장</Text>
-        <ChipWrap>
-          {busStops.map((stop) => (
-            <Chip
-              key={`end-${stop.id}`}
-              label={stop.name}
-              selected={input.endBusStopId === stop.id}
-              onPress={() =>
-                setInput((prev) => ({
-                  ...prev,
-                  endBusStopId: stop.id,
-                }))
-              }
-            />
-          ))}
-        </ChipWrap>
-
-        <View style={styles.inputSummary}>
-          <Text style={styles.summaryText}>
-            카테고리: {formatMask(input.categories, categoryOptions)}
-          </Text>
-          <Text style={styles.summaryText}>
-            테마: {formatMask(input.themes, themeOptions)}
-          </Text>
-          <Text style={styles.summaryText}>
-            출발: {getBusStopName(input.startBusStopId)}
-          </Text>
-          <Text style={styles.summaryText}>
-            복귀: {getBusStopName(input.endBusStopId)}
-          </Text>
-        </View>
-
-        <Pressable style={styles.mainButton} onPress={runRouteAlgorithm}>
-          <Text style={styles.mainButtonText}>경로 생성하기</Text>
-        </Pressable>
-
-        {errorMessage ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>오류: {errorMessage}</Text>
-          </View>
-        ) : null}
-      </View>
-    </>
-  );
-}
-
-function MapSection({
-  input,
-  result,
-  goToInput,
-  goToDetail,
-}: {
-  input: UserRouteInput;
-  result: FinalRoute | null;
-  goToInput: () => void;
-  goToDetail: () => void;
-}) {
-  if (!result) {
-    return (
-      <EmptyResult
-        title="아직 생성된 경로가 없습니다."
-        description="입력 화면에서 경로 생성하기를 먼저 눌러주세요."
-        onPress={goToInput}
-      />
-    );
-  }
 
   return (
-    <>
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>추천 경로 지도</Text>
-        <Text style={styles.description}>
-          장소 데이터의 위도/경도를 이용해 모의지도 위에 마커를 표시합니다.
-        </Text>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle={activeTab === '대기' ? 'light-content' : 'dark-content'} />
 
-        <RouteMap input={input} result={result} />
+      <View style={[styles.statusBarPlaceholder, { backgroundColor: activeTab === '대기' ? '#006e3f' : '#ffffff' }]}> 
+        <Text style={[styles.statusBarTime, { color: activeTab === '대기' ? '#d1fae5' : '#64748b' }]}>{displayTime}</Text>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>{result.routeTitle}</Text>
-        <Text style={styles.description}>{result.summary}</Text>
-
-        <View style={styles.statsRow}>
-          <Stat label="총 소요" value={`${result.timeSummary.totalTime}분`} />
-          <Stat label="체류" value={`${result.timeSummary.stayTime}분`} />
-          <Stat label="도보" value={`${result.timeSummary.walkingTime}분`} />
-        </View>
-
-        <View style={styles.statsRow}>
-          <Stat label="버스" value={`${result.timeSummary.busTime}분`} />
-          <Stat label="대기" value={`${result.timeSummary.busWaitTime}분`} />
-          <Stat label="장소" value={`${result.places.length}곳`} />
-        </View>
-
-        {result.warnings.length > 0 ? (
-          <View style={styles.warningBox}>
-            {result.warnings.map((warning, index) => (
-              <Text key={index} style={styles.warningText}>
-                ⚠ {warning}
-              </Text>
-            ))}
-          </View>
-        ) : null}
-
-        <View style={styles.buttonRow}>
-          <Pressable style={styles.subButton} onPress={goToInput}>
-            <Text style={styles.subButtonText}>조건 수정</Text>
-          </Pressable>
-          <Pressable style={styles.mainButtonFlex} onPress={goToDetail}>
-            <Text style={styles.mainButtonText}>경로 설명 보기</Text>
-          </Pressable>
-        </View>
-      </View>
-    </>
-  );
-}
-
-function DetailSection({
-  input,
-  result,
-  goToInput,
-  goToMap,
-}: {
-  input: UserRouteInput;
-  result: FinalRoute | null;
-  goToInput: () => void;
-  goToMap: () => void;
-}) {
-  if (!result) {
-    return (
-      <EmptyResult
-        title="아직 생성된 경로가 없습니다."
-        description="입력 화면에서 경로 생성하기를 먼저 눌러주세요."
-        onPress={goToInput}
-      />
-    );
-  }
-
-  return (
-    <>
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>버스 이동 요약</Text>
-
-        {result.startBus ? (
-          <BusInfo title="출발 버스" bus={result.startBus} />
-        ) : (
-          <Text style={styles.description}>
-            출발 버스 정보가 없습니다. 가까운 정류장이거나 시간표가 없을 수
-            있습니다.
-          </Text>
-        )}
-
-        {result.returnBus ? (
-          <BusInfo title="복귀 버스" bus={result.returnBus} />
-        ) : (
-          <Text style={styles.description}>
-            복귀 버스 정보가 없습니다. 마지막 장소에서 직접 이동하거나 시간표
-            확인이 필요합니다.
-          </Text>
-        )}
-
-        <View style={styles.inputSummary}>
-          <Text style={styles.summaryText}>
-            출발 정류장: {getBusStopName(input.startBusStopId)}
-          </Text>
-          <Text style={styles.summaryText}>
-            복귀 정류장: {getBusStopName(input.endBusStopId)}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>추천 장소 순서</Text>
-
-        {result.places.map((place, index) => (
-          <View key={place.id} style={styles.placeCard}>
-            <Text style={styles.placeNumber}>{index + 1}</Text>
-            <View style={styles.placeBody}>
-              <Text style={styles.placeName}>{place.name}</Text>
-              <Text style={styles.placeDescription}>{place.description}</Text>
-              <Text style={styles.placeMeta}>
-                점수 {place.score}점 · 체류 {place.averageTime}분 · 가까운
-                정류장 {getBusStopName(place.nearestBusStopId)}
-              </Text>
-
-              {place.reasons.length > 0 ? (
-                <View style={styles.reasonBox}>
-                  {place.reasons.map((reason, reasonIndex) => (
-                    <Text key={reasonIndex} style={styles.reasonText}>
-                      · {reason}
-                    </Text>
-                  ))}
-                </View>
-              ) : null}
+      <View style={styles.body}>
+        {activeTab === '대기' && (
+          <View style={styles.splashContainer}>
+            <View style={styles.splashIconBox}>
+              <Text style={{ fontSize: 34 }}>🗺️</Text>
             </View>
-          </View>
-        ))}
-      </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>장소 간 이동 경로</Text>
+            <Text style={styles.splashTitle}>안동 여행 루트</Text>
+            <Text style={styles.splashSubtitle}>
+              시간, 테마, 식사 여부를 바탕으로{`\n`}
+              안동 옥동 맞춤형 이동 경로를 추천합니다.
+            </Text>
 
-        {result.paths.length === 0 ? (
-          <Text style={styles.description}>장소 간 이동 경로가 없습니다.</Text>
-        ) : (
-          result.paths.map((path, index) => (
-            <View key={`${path.from}-${path.to}-${index}`} style={styles.pathCard}>
-              <Text style={styles.pathTitle}>
-                {index + 1}구간: {getPlaceName(path.from)} →{" "}
-                {getPlaceName(path.to)}
-              </Text>
-              <Text style={styles.pathText}>
-                거리 약 {Math.round(path.distance)}m
-              </Text>
-
-              {path.bus ? (
-                <Text style={styles.pathText}>
-                  이동: {path.bus.busNumber}번 버스 · 대기{" "}
-                  {path.bus.waitTime}분 · 탑승 {path.bus.rideTime}분
-                </Text>
-              ) : (
-                <Text style={styles.pathText}>
-                  이동: 도보 약 {path.walkTime}분
-                </Text>
-              )}
-            </View>
-          ))
-        )}
-
-        <View style={styles.buttonRow}>
-          <Pressable style={styles.subButton} onPress={goToMap}>
-            <Text style={styles.subButtonText}>지도 보기</Text>
-          </Pressable>
-          <Pressable style={styles.mainButtonFlex} onPress={goToInput}>
-            <Text style={styles.mainButtonText}>다시 생성</Text>
-          </Pressable>
-        </View>
-      </View>
-    </>
-  );
-}
-
-function RouteMap({
-  input,
-  result,
-}: {
-  input: UserRouteInput;
-  result: FinalRoute;
-}) {
-  const mapPoints = useMemo(() => {
-    const startStop = busStops.find((stop) => stop.id === input.startBusStopId);
-    const endStop = busStops.find((stop) => stop.id === input.endBusStopId);
-
-    const points: MapPoint[] = [];
-
-    if (startStop) {
-      points.push({
-        id: `start-${startStop.id}`,
-        name: startStop.name,
-        latitude: startStop.latitude,
-        longitude: startStop.longitude,
-        type: "start",
-      });
-    }
-
-    result.places.forEach((place, index) => {
-      points.push({
-        id: `place-${place.id}`,
-        name: place.name,
-        latitude: place.latitude,
-        longitude: place.longitude,
-        type: "place",
-        order: index + 1,
-      });
-    });
-
-    if (endStop) {
-      points.push({
-        id: `end-${endStop.id}`,
-        name: endStop.name,
-        latitude: endStop.latitude,
-        longitude: endStop.longitude,
-        type: "end",
-      });
-    }
-
-    return points;
-  }, [input.endBusStopId, input.startBusStopId, result.places]);
-
-  const bounds = useMemo(() => makeBounds(mapPoints), [mapPoints]);
-
-  return (
-    <View>
-      <ImageBackground
-        source={andongMapImage}
-        style={styles.map}
-        imageStyle={styles.mapImage}
-      >
-        <View style={styles.mapDim} />
-
-        {mapPoints.map((point) => {
-          const position = toMapPercent(point, bounds);
-
-          return (
-            <View
-              key={point.id}
-              style={[
-                styles.mapMarkerWrap,
-                {
-                  left: `${position.left}%`,
-                  top: `${position.top}%`,
-                },
-              ]}
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setActiveTab('입력')}
+              style={styles.splashStartBtn}
             >
-              <View
-                style={[
-                  styles.mapMarker,
-                  point.type === "start" && styles.startMarker,
-                  point.type === "end" && styles.endMarker,
-                ]}
-              >
-                <Text style={styles.mapMarkerText}>
-                  {point.type === "start"
-                    ? "S"
-                    : point.type === "end"
-                      ? "E"
-                      : point.order}
+              <Text style={styles.splashStartText}>루트 추천 시작하기</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {activeTab === '입력' && (
+          <View style={styles.screenFrame}>
+            <View style={styles.fixedHeader}>
+              <Text style={styles.pageTitle}>여행 조건 선택</Text>
+              <Text style={[styles.pageSubtitle, styles.fixedHeaderSubtitle]}>
+                조건을 고르면 버스 시간표 기반으로 이동 가능한 추천 루트를 생성합니다.
+              </Text>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.selectionScrollContent}
+            >
+              <Text style={styles.sectionLabel}>시작 시간</Text>
+              <View style={styles.gridThreeColumn}>
+                {startTimes.map(item => (
+                  <TouchableOpacity
+                    key={item}
+                    onPress={() => setStartTime(item)}
+                    style={[styles.choiceBtn, startTime === item ? styles.btnSelected : styles.btnUnselected]}
+                  >
+                    <Text style={[styles.choiceBtnText, startTime === item ? styles.textSelected : styles.textUnselected]}>{item}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.sectionLabel}>옥동 여행 시간</Text>
+              <View style={styles.gridTwoColumn}>
+                {durations.map(item => (
+                  <TouchableOpacity 
+                    key={item} 
+                    onPress={() => setDuration(item)} 
+                    style={[styles.choiceBtn, duration === item ? styles.btnSelected : styles.btnUnselected]}
+                  >
+                    <Text style={[styles.choiceBtnText, duration === item ? styles.textSelected : styles.textUnselected]}>{item}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.noticeBox}>
+                <Text style={styles.noticeText}>
+                  선택한 여행 시간은 옥동 도착 후부터 복귀 정류장 도착 전까지의 시간만 계산합니다. 경국대↔옥동 버스 대기·이동 시간은 추가 소요 시간으로 따로 표시됩니다.
                 </Text>
               </View>
-              <Text numberOfLines={1} style={styles.mapMarkerLabel}>
-                {point.name}
+
+              <Text style={styles.sectionLabel}>식사 여부</Text>
+              <View style={styles.rowLayout}>
+                {meals.map(item => (
+                  <TouchableOpacity 
+                    key={item} 
+                    onPress={() => setMeal(item)} 
+                    style={[styles.choiceBtn, { flex: 1 }, meal === item ? styles.btnSelected : styles.btnUnselected]}
+                  >
+                    <Text style={[styles.choiceBtnText, meal === item ? styles.textSelected : styles.textUnselected]}>{item}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.sectionLabel}>선호 테마</Text>
+              <View style={styles.gridThreeColumn}>
+                {themes.map(item => (
+                  <TouchableOpacity 
+                    key={item} 
+                    onPress={() => setTheme(item)} 
+                    style={[styles.choiceBtn, theme === item ? styles.btnSelected : styles.btnUnselected]}
+                  >
+                    <Text style={[styles.choiceBtnText, { fontSize: 12 }, theme === item ? styles.textSelected : styles.textUnselected]}>{item}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            <View style={styles.fixedBottomBox}>
+              <TouchableOpacity 
+                activeOpacity={0.9}
+                onPress={handleGenerateRoute}
+                style={[styles.submitBtn, styles.fixedSubmitBtn]}
+              >
+                <Text style={styles.submitBtnText}>추천 경로 생성하기</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {activeTab === '지도' && (
+          <View style={styles.screenFrame}>
+            <View style={styles.fixedHeader}>
+              <Text style={styles.pageTitle}>지도 경로</Text>
+              <Text style={[styles.pageSubtitle, styles.fixedHeaderSubtitle]}>
+                버스 정류장에서 시작하고 버스 정류장으로 종료되는 추천 루트입니다.
               </Text>
             </View>
-          );
-        })}
-      </ImageBackground>
 
-      <View style={styles.routeFlow}>
-        <Text style={styles.flowText}>
-          {getBusStopName(input.startBusStopId)}
-        </Text>
+            {!generatedPlan ? (
+              renderEmptyState('아직 생성된 루트가 없습니다.', '선택 화면에서 조건을 고른 뒤 추천 경로를 먼저 생성해 주세요.')
+            ) : (
+              <>
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.mapScrollContent}
+                >
+                  <View style={styles.routeSummaryBox}>
+                    <View style={styles.routeSummaryItem}>
+                      <Text style={styles.routeSummaryLabel}>출발 선택</Text>
+                      <Text style={styles.routeSummaryValue}>{generatedPlan.selectedStartTime}</Text>
+                    </View>
+                    <View style={styles.routeSummaryItem}>
+                      <Text style={styles.routeSummaryLabel}>옥동 시작</Text>
+                      <Text style={styles.routeSummaryValue}>{generatedPlan.okdongStartTime}</Text>
+                    </View>
+                    <View style={styles.routeSummaryItem}>
+                      <Text style={styles.routeSummaryLabel}>실제 종료</Text>
+                      <Text style={styles.routeSummaryValue}>{generatedPlan.actualEndTime}</Text>
+                    </View>
+                  </View>
 
-        {result.places.map((place) => (
-          <React.Fragment key={place.id}>
-            <Text style={styles.flowArrow}>↓</Text>
-            <Text style={styles.flowText}>{place.name}</Text>
-          </React.Fragment>
-        ))}
+                  <View style={styles.conditionSummaryLine}>
+                    <Text style={styles.conditionSummaryText}>#{generatedTheme}</Text>
+                    <Text style={styles.conditionSummaryText}>#{generatedMeal}</Text>
+                    <Text style={styles.conditionSummaryText}>#{generatedPlan.selectedDurationLabel}</Text>
+                  </View>
 
-        <Text style={styles.flowArrow}>↓</Text>
-        <Text style={styles.flowText}>{getBusStopName(input.endBusStopId)}</Text>
+                  <View style={styles.timeAnalysisBox}>
+                    <View style={styles.timeAnalysisRow}>
+                      <Text style={styles.timeAnalysisLabel}>선택한 옥동 여행 시간</Text>
+                      <Text style={styles.timeAnalysisValue}>{generatedPlan.selectedOkdongMinutes}분</Text>
+                    </View>
+                    <View style={styles.timeAnalysisRow}>
+                      <Text style={styles.timeAnalysisLabel}>실제 옥동 사용 시간</Text>
+                      <Text style={styles.timeAnalysisValue}>{generatedPlan.okdongUsedMinutes}분</Text>
+                    </View>
+                    <View style={styles.timeAnalysisRow}>
+                      <Text style={styles.timeAnalysisLabel}>추가 소요 시간</Text>
+                      <Text style={styles.timeAnalysisValue}>{generatedPlan.extraMinutes}분</Text>
+                    </View>
+                    <View style={styles.timeAnalysisRow}>
+                      <Text style={styles.timeAnalysisLabel}>전체 일정 소요</Text>
+                      <Text style={styles.timeAnalysisValue}>{generatedPlan.totalMinutes}분</Text>
+                    </View>
+                    <Text style={styles.timeAnalysisDesc}>
+                      추가 소요 시간은 경국대↔옥동 버스 대기 시간과 버스 탑승 시간을 합친 값입니다. 옥동 내부 도보와 장소 체류는 옥동 여행 시간에 포함됩니다.
+                    </Text>
+                  </View>
+
+                  <View style={styles.mapBorderContainer}>
+                    <View style={styles.mapCanvas}>
+                      <Image source={okdongMapImage} style={styles.mapImage} resizeMode="stretch" />
+
+                      <Svg width={MAP_WIDTH} height={MAP_HEIGHT} style={styles.mapOverlay}>
+                        {routeMapPoints.length > 1 && (
+                          <Polyline
+                            points={routeMapPoints
+                              .map(point => {
+                                const c = getMapCoords(point.x, point.y);
+                                return `${c.x},${c.y}`;
+                              })
+                              .join(' ')}
+                            fill="none"
+                            stroke="#006e3f"
+                            strokeWidth={4}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            opacity={0.78}
+                          />
+                        )}
+                      </Svg>
+
+                      {routeMapPoints.map((point, idx) => {
+                        const coords = getMapCoords(point.x, point.y);
+                        const pinColor = point.kind === 'bus'
+                          ? '#2563eb'
+                          : point.placeType === 'active'
+                            ? '#f97316'
+                            : point.placeType === 'target'
+                              ? '#ef4444'
+                              : '#006e3f';
+
+                        return (
+                          <View
+                            key={point.key}
+                            style={[styles.markerAbsolute, { left: coords.x, top: coords.y }]}
+                          >
+                            <View style={[styles.markerBadge, { backgroundColor: pinColor }]}> 
+                              <Text style={styles.markerBadgeText}>{idx + 1}</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  <Text style={styles.sectionLabel}>추천 순서 및 시간 계산</Text>
+                  <View style={styles.summaryContainer}>
+                    <View style={styles.summaryItemRow}>
+                      <Text style={styles.summaryText}>
+                        <Text style={{ color: '#2563eb', fontWeight: '900' }}>1. {generatedPlan.startStop.name}</Text>
+                        <Text style={{ fontSize: 11, color: '#64748b' }}> 옥동 도착 {generatedPlan.okdongStartTime}</Text>
+                      </Text>
+                      {generatedPlan.outboundBus && (
+                        <Text style={styles.summaryBusInfo}>
+                          🚌 {getBusStopName(generatedPlan.outboundBus.fromBusStopId)}에서 {generatedPlan.outboundBus.busNumber}번 탑승 · 대기 {generatedPlan.outboundBus.waitTime}분 + 이동 {generatedPlan.outboundBus.rideTime}분
+                        </Text>
+                      )}
+                    </View>
+
+                    {timelineRoute.map((p, idx) => (
+                      <View key={`list-${p.id}`} style={styles.summaryItemRow}>
+                        <Text style={styles.summaryText}>
+                          <Text style={{ color: '#006e3f', fontWeight: '800' }}>{idx + 2}. {p.name}</Text> 
+                          <Text style={{ fontSize: 11, color: '#64748b' }}> ({p.startTimeStr}~{p.endTimeStr})</Text>
+                        </Text>
+                        <Text style={styles.summaryMoveInfo}>↳ 이전 지점에서 도보 {p.walkFromPrevMinutes}분 · 체류 {p.duration}분</Text>
+                      </View>
+                    ))}
+
+                    <View style={styles.summaryItemRow}>
+                      <Text style={styles.summaryText}>
+                        <Text style={{ color: '#2563eb', fontWeight: '900' }}>{timelineRoute.length + 2}. {generatedPlan.endStop.name}</Text>
+                        <Text style={{ fontSize: 11, color: '#64748b' }}> 옥동 종료 {generatedPlan.okdongEndTime}</Text>
+                      </Text>
+                      <Text style={styles.summaryMoveInfo}>↳ 마지막 장소에서 복귀 정류장까지 도보 {generatedPlan.returnWalkMinutes}분</Text>
+                      {generatedPlan.returnBus && (
+                        <Text style={styles.summaryBusInfo}>
+                          🚌 {generatedPlan.returnBus.busNumber}번 복귀 · 대기 {generatedPlan.returnBus.waitTime}분 + 이동 {generatedPlan.returnBus.rideTime}분 · 최종 {generatedPlan.actualEndTime}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                </ScrollView>
+
+                <View style={styles.fixedBottomBox}>
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={() => { setSelectedTag('전체'); setActiveTab('설명'); }}
+                    style={[styles.submitBtn, styles.fixedSubmitBtn]}
+                  >
+                    <Text style={styles.submitBtnText}>상세 타임라인 전체 보기</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        )}
+
+        {activeTab === '설명' && (
+          <View style={styles.screenFrame}>
+            <View style={styles.fixedHeader}>
+              <Text style={styles.pageTitle}>경로 상세 설명</Text>
+              <Text style={[styles.pageSubtitle, styles.fixedHeaderSubtitle]}>
+                생성된 장소와 이동 순서를 상세하게 보여줍니다.
+              </Text>
+            </View>
+
+            {!generatedPlan ? (
+              renderEmptyState('상세 설명을 표시할 루트가 없습니다.', '먼저 선택 화면에서 루트를 만들어 주세요.')
+            ) : (
+              <>
+                <View style={styles.fixedTagArea}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {['전체', '카페', '먹거리', '자연', '쇼핑/편의'].map(tag => (
+                      <TouchableOpacity 
+                        key={tag} 
+                        onPress={() => setSelectedTag(tag)} 
+                        style={[styles.tagBadge, selectedTag === tag ? { backgroundColor: '#006e3f' } : { backgroundColor: '#f0fdf4' }]}
+                      >
+                        <Text style={[styles.tagBadgeText, selectedTag === tag ? { color: '#ffffff' } : { color: '#006e3f' }]}>#{tag}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.detailScrollContent}
+                >
+                  <View style={styles.detailCard}>
+                    <Text style={styles.detailSectionTitle}>출발 버스</Text>
+                    <Text style={styles.cardDesc}>
+                      {generatedPlan.selectedStartTime} 기준으로 경국대 정류장에서 출발합니다. {generatedPlan.outboundBus
+                        ? `${generatedPlan.outboundBus.busNumber}번 버스를 ${generatedPlan.outboundBus.waitTime}분 기다린 뒤 ${generatedPlan.outboundBus.rideTime}분 이동하여 ${generatedPlan.okdongStartTime}에 ${generatedPlan.startStop.name}에 도착합니다.`
+                        : '연결 가능한 버스 시간이 없어 옥동 시작 시간이 선택 시간과 동일하게 처리되었습니다.'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.detailCard}>
+                    <Text style={styles.detailSectionTitle}>시간 계산 요약</Text>
+                    <Text style={styles.cardDesc}>
+                      선택한 옥동 여행 시간은 {generatedPlan.selectedOkdongMinutes}분이고, 실제 옥동 내부에서 사용한 시간은 {generatedPlan.okdongUsedMinutes}분입니다. 왕복 버스 대기·이동으로 {generatedPlan.extraMinutes}분이 추가되어 전체 일정은 총 {generatedPlan.totalMinutes}분입니다.
+                    </Text>
+                  </View>
+
+                  {filteredCards.length === 0 ? (
+                    <Text style={styles.emptyText}>선택한 태그에 해당하는 장소가 동선에 없습니다.</Text>
+                  ) : (
+                    filteredCards.map((loc) => {
+                      const oIdx = timelineRoute.findIndex(p => p.id === loc.id) + 2;
+                      const cardBadgeColor = loc.type === 'active' ? '#f97316' : loc.type === 'target' ? '#ef4444' : '#006e3f';
+                      return (
+                        <View key={`card-${loc.id}`} style={styles.detailCard}>
+                          <View style={{ flexDirection: 'row' }}>
+                            <View style={[styles.cardIndexBadge, { backgroundColor: cardBadgeColor }]}> 
+                              <Text style={styles.cardIndexText}>{oIdx}</Text>
+                            </View>
+                            <View style={{ flex: 1, marginLeft: 12 }}>
+                              <View style={styles.cardHeaderRow}>
+                                <Text style={styles.cardTitle}>{loc.name}</Text>
+                                <View style={styles.timeLabelBadge}>
+                                  <Text style={styles.timeLabelText}>{loc.startTimeStr} - {loc.endTimeStr}</Text>
+                                </View>
+                              </View>
+                              <Text style={styles.cardSubMeta}>도보 {loc.walkFromPrevMinutes}분 후 도착 · {loc.duration}분 체류 · {loc.category}</Text>
+                              <Text style={styles.cardDesc}>{loc.description}</Text>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })
+                  )}
+
+                  <View style={styles.detailCard}>
+                    <Text style={styles.detailSectionTitle}>복귀 버스</Text>
+                    <Text style={styles.cardDesc}>
+                      마지막 장소에서 {generatedPlan.endStop.name}까지 도보 {generatedPlan.returnWalkMinutes}분 이동하여 옥동 일정을 {generatedPlan.okdongEndTime}에 종료합니다. {generatedPlan.returnBus
+                        ? `${generatedPlan.returnBus.busNumber}번 버스를 ${generatedPlan.returnBus.waitTime}분 기다린 뒤 ${generatedPlan.returnBus.rideTime}분 이동하여 ${generatedPlan.actualEndTime}에 복귀합니다.`
+                        : '연결 가능한 복귀 버스 시간이 없어 옥동 종료 시간이 전체 종료 시간으로 처리되었습니다.'}
+                    </Text>
+                  </View>
+                </ScrollView>
+              </>
+            )}
+          </View>
+        )}
       </View>
-    </View>
+
+      {activeTab !== '대기' && (
+        <View style={styles.navBar}>
+          {[
+            { id: '입력', label: '선택', icon: '⚙️' },
+            { id: '지도', label: '지도', icon: '🗺️' },
+            { id: '설명', label: '상세', icon: '📜' }
+          ].map((tab) => {
+            const isSelected = activeTab === tab.id;
+            return (
+              <TouchableOpacity 
+                key={`tab-btn-${tab.id}`} 
+                onPress={() => setActiveTab(tab.id)} 
+                style={styles.navItem}
+              >
+                <Text style={{ fontSize: 18, opacity: isSelected ? 1 : 0.4 }}>{tab.icon}</Text>
+                <Text style={[styles.navItemText, isSelected ? styles.navTextActive : styles.navTextInactive]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+    </SafeAreaView>
   );
 }
 
-function BusInfo({
-  title,
-  bus,
-}: {
-  title: string;
-  bus: NonNullable<FinalRoute["startBus"]>;
-}) {
-  return (
-    <View style={styles.busCard}>
-      <Text style={styles.busTitle}>{title}</Text>
-      <Text style={styles.busText}>
-        {bus.busNumber}번 · {getBusStopName(bus.fromBusStopId)} →{" "}
-        {getBusStopName(bus.toBusStopId)}
-      </Text>
-      <Text style={styles.busText}>
-        출발 {bus.departureTime} · 도착 {bus.arrivalTime}
-      </Text>
-      <Text style={styles.busText}>
-        대기 {bus.waitTime}분 · 탑승 {bus.rideTime}분
-      </Text>
-    </View>
-  );
-}
-
-function EmptyResult({
-  title,
-  description,
-  onPress,
-}: {
-  title: string;
-  description: string;
-  onPress: () => void;
-}) {
-  return (
-    <View style={styles.card}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <Text style={styles.description}>{description}</Text>
-      <Pressable style={styles.mainButton} onPress={onPress}>
-        <Text style={styles.mainButtonText}>입력 화면으로 이동</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function ChipWrap({ children }: { children: React.ReactNode }) {
-  return <View style={styles.chipWrap}>{children}</View>;
-}
-
-function Chip({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.chip, selected && styles.selectedChip]}
-    >
-      <Text style={[styles.chipText, selected && styles.selectedChipText]}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.statBox}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
-    </View>
-  );
-}
-
-function getBusStopName(id: number) {
-  return busStops.find((stop) => stop.id === id)?.name ?? `정류장 ${id}`;
-}
-
-function getPlaceName(id: number) {
-  return places.find((place) => place.id === id)?.name ?? `장소 ${id}`;
-}
-
-function formatMask(value: number, options: Option[]) {
-  const selected = options
-    .filter((option) => (value & option.value) !== 0)
-    .map((option) => option.label);
-
-  return selected.length > 0 ? selected.join(", ") : "선택 없음";
-}
-
-function makeBounds(points: MapPoint[]) {
-  const safePoints =
-    points.length > 0
-      ? points
-      : places.map((place) => ({
-          id: String(place.id),
-          name: place.name,
-          latitude: place.latitude,
-          longitude: place.longitude,
-          type: "place" as const,
-        }));
-
-  const latitudes = safePoints.map((point) => point.latitude);
-  const longitudes = safePoints.map((point) => point.longitude);
-
-  const minLat = Math.min(...latitudes);
-  const maxLat = Math.max(...latitudes);
-  const minLon = Math.min(...longitudes);
-  const maxLon = Math.max(...longitudes);
-
-  return {
-    minLat,
-    maxLat: maxLat === minLat ? maxLat + 0.001 : maxLat,
-    minLon,
-    maxLon: maxLon === minLon ? maxLon + 0.001 : maxLon,
-  };
-}
-
-function toMapPercent(
-  point: Pick<Place, "latitude" | "longitude">,
-  bounds: ReturnType<typeof makeBounds>
-) {
-  const horizontalPadding = 10;
-  const verticalPadding = 12;
-
-  const rawLeft =
-    ((point.longitude - bounds.minLon) / (bounds.maxLon - bounds.minLon)) * 100;
-
-  const rawTop =
-    (1 - (point.latitude - bounds.minLat) / (bounds.maxLat - bounds.minLat)) *
-    100;
-
-  return {
-    left:
-      horizontalPadding +
-      (rawLeft * (100 - horizontalPadding * 2)) / 100,
-    top: verticalPadding + (rawTop * (100 - verticalPadding * 2)) / 100,
-  };
-}
-
+// ============================================================================
+// 4. REACT NATIVE STYLESHEET
+// ============================================================================
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F6F7F9",
+    backgroundColor: '#ffffff'
   },
-  content: {
-    padding: 20,
-    gap: 16,
+  statusBarPlaceholder: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
   },
-  header: {
-    gap: 8,
-    paddingTop: 8,
+  statusBarTime: {
+    fontSize: 13,
+    fontWeight: '600'
   },
-  kicker: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#2563EB",
-    letterSpacing: 0.5,
+  body: {
+    flex: 1
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "900",
-    color: "#111827",
+  screenFrame: {
+    flex: 1,
+    backgroundColor: '#ffffff'
   },
-  description: {
+  fixedHeader: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 14,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    zIndex: 10
+  },
+  fixedHeaderSubtitle: {
+    marginBottom: 0
+  },
+  selectionScrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 4,
+    paddingBottom: 24
+  },
+  mapScrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 24
+  },
+  detailScrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 24
+  },
+  fixedBottomBox: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 16,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9'
+  },
+  fixedSubmitBtn: {
+    marginTop: 0
+  },
+  fixedTagArea: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 8,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f8fafc'
+  },
+  splashContainer: {
+    flex: 1,
+    backgroundColor: '#006e3f',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32
+  },
+  splashIconBox: {
+    width: 80,
+    height: 80,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24
+  },
+  splashTitle: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#ffffff',
+    marginBottom: 12
+  },
+  splashSubtitle: {
     fontSize: 14,
-    lineHeight: 21,
-    color: "#4B5563",
+    color: '#d1fae5',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 32
   },
-  tabWrap: {
-    flexDirection: "row",
-    backgroundColor: "#E5E7EB",
-    padding: 4,
-    borderRadius: 999,
-    gap: 4,
+  splashStartBtn: {
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 28
   },
-  tab: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 999,
-    alignItems: "center",
+  splashStartText: {
+    color: '#006e3f',
+    fontSize: 15,
+    fontWeight: '800'
   },
-  activeTab: {
-    backgroundColor: "#111827",
+  pageTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 4
   },
-  disabledTab: {
-    opacity: 0.45,
-  },
-  tabText: {
+  pageSubtitle: {
     fontSize: 13,
-    fontWeight: "800",
-    color: "#374151",
+    color: '#94a3b8',
+    marginBottom: 24,
+    lineHeight: 18
   },
-  activeTabText: {
-    color: "#FFFFFF",
-  },
-  disabledTabText: {
-    color: "#6B7280",
-  },
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 16,
-    gap: 14,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  sectionTitle: {
-    fontSize: 19,
-    fontWeight: "900",
-    color: "#111827",
-  },
-  groupLabel: {
-    marginTop: 4,
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#374151",
-  },
-  statsRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  statBox: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: "#F9FAFB",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  statLabel: {
+  sectionLabel: {
     fontSize: 12,
-    color: "#6B7280",
-    fontWeight: "700",
+    fontWeight: '700',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    marginBottom: 10,
+    marginTop: 14
   },
-  statValue: {
-    marginTop: 4,
-    fontSize: 17,
-    color: "#2563EB",
-    fontWeight: "900",
+  gridTwoColumn: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 10
   },
-  chipWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+  gridThreeColumn: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 20
   },
-  chip: {
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: "#F3F4F6",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  selectedChip: {
-    backgroundColor: "#2563EB",
-    borderColor: "#2563EB",
-  },
-  chipText: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#374151",
-  },
-  selectedChipText: {
-    color: "#FFFFFF",
-  },
-  inputSummary: {
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: "#F9FAFB",
-    gap: 4,
-  },
-  summaryText: {
-    fontSize: 13,
-    lineHeight: 20,
-    color: "#374151",
-    fontWeight: "600",
-  },
-  mainButton: {
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-    backgroundColor: "#111827",
-  },
-  mainButtonFlex: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-    backgroundColor: "#111827",
-  },
-  mainButtonText: {
-    fontSize: 15,
-    fontWeight: "900",
-    color: "#FFFFFF",
-  },
-  subButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-    backgroundColor: "#EEF2FF",
-  },
-  subButtonText: {
-    fontSize: 15,
-    fontWeight: "900",
-    color: "#3730A3",
-  },
-  buttonRow: {
-    flexDirection: "row",
+  rowLayout: {
+    flexDirection: 'row',
     gap: 10,
+    marginBottom: 14
   },
-  errorBox: {
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: "#FEF2F2",
+  choiceBtn: {
+    width: '48%',
+    paddingVertical: 12,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: "#FCA5A5",
+    marginBottom: 10
   },
-  errorText: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#B91C1C",
-    fontWeight: "800",
+  btnSelected: {
+    backgroundColor: '#006e3f',
+    borderColor: '#006e3f'
   },
-  warningBox: {
-    padding: 12,
+  btnUnselected: {
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0'
+  },
+  choiceBtnText: {
+    fontSize: 14,
+    fontWeight: '600'
+  },
+  textSelected: {
+    color: '#ffffff'
+  },
+  textUnselected: {
+    color: '#475569'
+  },
+  noticeBox: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     borderRadius: 14,
-    backgroundColor: "#FFFBEB",
-    gap: 4,
+    padding: 12,
+    marginBottom: 10
   },
-  warningText: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#92400E",
-    fontWeight: "700",
+  noticeText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#64748b',
+    fontWeight: '600'
   },
-  map: {
-    height: 260,
+  submitBtn: {
+    width: '100%',
+    backgroundColor: '#006e3f',
+    borderRadius: 28,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12
+  },
+  submitBtnText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700'
+  },
+  routeSummaryBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
     borderRadius: 18,
-    overflow: "hidden",
-    backgroundColor: "#E5E7EB",
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    marginBottom: 12
+  },
+  routeSummaryItem: {
+    flex: 1,
+    alignItems: 'center'
+  },
+  routeSummaryLabel: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '700',
+    marginBottom: 4
+  },
+  routeSummaryValue: {
+    fontSize: 15,
+    color: '#006e3f',
+    fontWeight: '900'
+  },
+  conditionSummaryLine: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12
+  },
+  conditionSummaryText: {
+    fontSize: 12,
+    color: '#006e3f',
+    fontWeight: '800',
+    backgroundColor: '#f0fdf4',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14
+  },
+  timeAnalysisBox: {
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: "#D1D5DB",
+    borderColor: '#e2e8f0',
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 16
+  },
+  timeAnalysisRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 5
+  },
+  timeAnalysisLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '700'
+  },
+  timeAnalysisValue: {
+    fontSize: 13,
+    color: '#0f172a',
+    fontWeight: '900'
+  },
+  timeAnalysisDesc: {
+    fontSize: 11,
+    color: '#94a3b8',
+    lineHeight: 16,
+    marginTop: 8
+  },
+  mapBorderContainer: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 24,
+    padding: 12,
+    marginBottom: 16
+  },
+  mapCanvas: {
+    width: '100%',
+    height: MAP_HEIGHT,
+    backgroundColor: '#f4f3ee',
+    borderRadius: 16,
+    position: 'relative',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#cbd5e1'
   },
   mapImage: {
-    borderRadius: 18,
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+    left: 0,
+    top: 0
   },
-  mapDim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255,255,255,0.15)",
+  mapOverlay: {
+    position: 'absolute',
+    left: 0,
+    top: 0
   },
-  mapMarkerWrap: {
-    position: "absolute",
-    width: 86,
-    marginLeft: -43,
-    marginTop: -20,
-    alignItems: "center",
+  markerAbsolute: {
+    position: 'absolute',
+    transform: [{ translateX: -12 }, { translateY: -12 }],
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 24,
+    height: 24
   },
-  mapMarker: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#EF4444",
+  markerBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 2,
-    borderColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
+    borderColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  startMarker: {
-    backgroundColor: "#2563EB",
-  },
-  endMarker: {
-    backgroundColor: "#111827",
-  },
-  mapMarkerText: {
-    fontSize: 11,
-    fontWeight: "900",
-    color: "#FFFFFF",
-  },
-  mapMarkerLabel: {
-    marginTop: 4,
-    maxWidth: 86,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 8,
-    overflow: "hidden",
-    backgroundColor: "rgba(17,24,39,0.84)",
-    color: "#FFFFFF",
+  markerBadgeText: {
+    color: '#ffffff',
     fontSize: 10,
-    fontWeight: "800",
-    textAlign: "center",
+    fontWeight: '900'
   },
-  routeFlow: {
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: "#F9FAFB",
+  summaryContainer: {
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    alignItems: "center",
-    gap: 4,
+    borderColor: '#cbd5e1',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    padding: 14,
+    backgroundColor: '#f8fafc',
+    marginBottom: 16
   },
-  flowText: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#111827",
-    textAlign: "center",
+  summaryItemRow: {
+    marginBottom: 10
   },
-  flowArrow: {
-    fontSize: 14,
-    fontWeight: "900",
-    color: "#2563EB",
+  summaryText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569'
   },
-  busCard: {
-    padding: 13,
-    borderRadius: 14,
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-    gap: 4,
+  summaryBusInfo: {
+    paddingLeft: 14,
+    color: '#2563eb',
+    fontSize: 11,
+    marginTop: 3,
+    fontWeight: '600',
+    lineHeight: 15
   },
-  busTitle: {
-    fontSize: 15,
-    fontWeight: "900",
-    color: "#1D4ED8",
+  summaryMoveInfo: {
+    paddingLeft: 14,
+    color: '#64748b',
+    fontSize: 11,
+    marginTop: 3,
+    fontWeight: '500'
   },
-  busText: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#1F2937",
-    fontWeight: "600",
-  },
-  placeCard: {
-    flexDirection: "row",
-    gap: 12,
-    padding: 13,
-    borderRadius: 14,
-    backgroundColor: "#F9FAFB",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  placeNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    overflow: "hidden",
-    backgroundColor: "#2563EB",
-    color: "#FFFFFF",
-    textAlign: "center",
-    lineHeight: 28,
-    fontWeight: "900",
-  },
-  placeBody: {
+  emptyStateBox: {
     flex: 1,
-    gap: 4,
+    paddingHorizontal: 24,
+    justifyContent: 'center',
+    alignItems: 'center'
   },
-  placeName: {
-    fontSize: 15,
-    fontWeight: "900",
-    color: "#111827",
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 8
   },
-  placeDescription: {
+  emptyStateDesc: {
     fontSize: 13,
-    lineHeight: 19,
-    color: "#4B5563",
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20
   },
-  placeMeta: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: "#2563EB",
-    fontWeight: "800",
+  emptyActionBtn: {
+    backgroundColor: '#006e3f',
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 22
   },
-  reasonBox: {
-    marginTop: 4,
-    gap: 2,
+  emptyActionText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '800'
   },
-  reasonText: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: "#374151",
-  },
-  pathCard: {
-    padding: 13,
+  tagBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 14,
-    backgroundColor: "#F3F4F6",
-    gap: 4,
+    marginRight: 6,
+    height: 30
   },
-  pathTitle: {
-    fontSize: 14,
-    fontWeight: "900",
-    color: "#111827",
+  tagBadgeText: {
+    fontSize: 11,
+    fontWeight: '700'
   },
-  pathText: {
+  emptyText: {
+    textAlign: 'center',
+    paddingVertical: 40,
     fontSize: 13,
-    lineHeight: 19,
-    color: "#4B5563",
-    fontWeight: "600",
+    color: '#94a3b8'
   },
+  detailCard: {
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    marginBottom: 12
+  },
+  detailSectionTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#0f172a',
+    marginBottom: 6
+  },
+  cardIndexBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  cardIndexText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  cardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1e293b',
+    flex: 1
+  },
+  timeLabelBadge: {
+    backgroundColor: '#f0fdf4',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6
+  },
+  timeLabelText: {
+    fontSize: 11,
+    color: '#006e3f',
+    fontWeight: '700'
+  },
+  cardSubMeta: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontWeight: '600',
+    marginVertical: 4
+  },
+  cardDesc: {
+    fontSize: 12,
+    color: '#64748b',
+    lineHeight: 17
+  },
+  navBar: {
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    backgroundColor: '#ffffff',
+    paddingVertical: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center'
+  },
+  navItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 64
+  },
+  navItemText: {
+    fontSize: 11,
+    marginTop: 2
+  },
+  navTextActive: {
+    color: '#006e3f',
+    fontWeight: '700'
+  },
+  navTextInactive: {
+    color: '#94a3b8',
+    fontWeight: '500'
+  }
 });
