@@ -12,11 +12,380 @@ import {
 } from "react-native";
 import Svg, { Polyline } from "react-native-svg";
 
+import { createRoute } from "../src/algorithms/routeMaker";
+import { calculateMapDistance } from "../src/algorithms/utils/distanceUtils";
+import { calculateWalkTimeFromDistance } from "../src/algorithms/utils/timeUtils";
+import { busStops } from "../src/data/busStop";
+import { categoryMask, themeMask } from "../src/types/place";
+import type { SelectedBus } from "../src/types/busSchedule";
+import type { FinalRoute, ScoredPlace } from "../src/types/route";
+import type { UserRouteInput } from "../src/types/userInput";
+
 // ============================================================================
-import { buildGeneratedPlan, getBusStopName } from "../src/algorithms/";
-import type { GeneratedPlan } from "../src/types/okdongRoute";
+// src/algorithms/routeMaker.ts 기반 UI 연결용 타입/변환 함수
+// ============================================================================
+interface DisplayBusStop {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+  latitude: number;
+  longitude: number;
+}
+
+interface TimelinePlace {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+  category: string;
+  categoryBit: number;
+  themeBit: number;
+  duration: number;
+  type: "normal" | "active" | "target";
+  description: string;
+  nearestBusStopId: number;
+  startTimeStr: string;
+  endTimeStr: string;
+  walkFromPrevMinutes: number;
+  score: number;
+  reasons: string[];
+}
+
+interface RouteMapPoint {
+  key: string;
+  name: string;
+  x: number;
+  y: number;
+  kind: "bus" | "place";
+  placeType?: TimelinePlace["type"];
+}
+
+interface GeneratedPlan {
+  places: ScoredPlace[];
+  timelineRoute: TimelinePlace[];
+  routeMapPoints: RouteMapPoint[];
+  startStop: DisplayBusStop;
+  endStop: DisplayBusStop;
+  outboundBus: SelectedBus | null;
+  returnBus: SelectedBus | null;
+  selectedStartTime: string;
+  selectedDurationLabel: string;
+  selectedOkdongMinutes: number;
+  okdongStartTime: string;
+  okdongEndTime: string;
+  actualEndTime: string;
+  okdongUsedMinutes: number;
+  okdongRemainMinutes: number;
+  extraMinutes: number;
+  totalMinutes: number;
+  returnWalkMinutes: number;
+}
 
 const okdongMapImage = require("../assets/images/okdong_mock_map.png");
+
+// 기존 src/data/busStop.ts 기준: 7번 = 국립경국대, 4번 = 옥동농협앞
+const SCHOOL_STOP_ID = 7;
+const OKDONG_DEFAULT_STOP_ID = 4;
+
+const DURATION_TO_MINUTES: Record<string, number> = {
+  "2시간": 120,
+  "3시간": 180,
+  "4시간": 240,
+  반나절: 360,
+};
+
+const THEME_TO_MASK: Record<string, number> = {
+  감성: themeMask.MOOD,
+  먹거리: themeMask.FOOD,
+  자연: themeMask.NATURE,
+  조용한: themeMask.QUIET,
+  문화: themeMask.CULTURE,
+};
+
+// routeMaker의 Greedy가 첫 위치를 출발 정류장 좌표로 잡기 때문에
+// 경국대 → 옥동 이동 거리를 감안할 여유 시간을 내부 계산에만 조금 더해준다.
+// 실제 화면의 "선택한 옥동 여행 시간"은 아래 selectedOkdongMinutes 값을 그대로 쓴다.
+const SCHOOL_TO_OKDONG_ROUTE_BUFFER_MINUTES = 140;
+
+// 옥동 모의지도 위에 위경도 데이터를 퍼센트 좌표로 배치하기 위한 대략 범위
+const OKDONG_MAP_BOUNDS = {
+  minLat: 36.5620,
+  maxLat: 36.5673,
+  minLon: 128.6990,
+  maxLon: 128.7048,
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function timeToMinutes(timeStr: string): number {
+  const [hours, minutes] = timeStr.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function minutesToTime(totalMinutes: number): string {
+  const hours = Math.floor(totalMinutes / 60) % 24;
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function diffMinutes(fromTime: string, toTime: string): number {
+  return Math.max(0, timeToMinutes(toTime) - timeToMinutes(fromTime));
+}
+
+function parseDurationToMinutes(durationLabel: string): number {
+  return DURATION_TO_MINUTES[durationLabel] || 180;
+}
+
+function projectLatLonToMapPercent(latitude: number, longitude: number) {
+  const x =
+    ((longitude - OKDONG_MAP_BOUNDS.minLon) /
+      (OKDONG_MAP_BOUNDS.maxLon - OKDONG_MAP_BOUNDS.minLon)) *
+    100;
+  const y =
+    ((OKDONG_MAP_BOUNDS.maxLat - latitude) /
+      (OKDONG_MAP_BOUNDS.maxLat - OKDONG_MAP_BOUNDS.minLat)) *
+    100;
+
+  return {
+    x: clamp(x, 4, 96),
+    y: clamp(y, 4, 96),
+  };
+}
+
+function getBusStopName(stopId: number): string {
+  return busStops.find((stop) => stop.id === stopId)?.name || `정류장 ${stopId}`;
+}
+
+function getDisplayBusStop(stopId: number): DisplayBusStop {
+  const stop =
+    busStops.find((item) => item.id === stopId) ||
+    busStops.find((item) => item.id === OKDONG_DEFAULT_STOP_ID) ||
+    busStops[0];
+
+  const coords = projectLatLonToMapPercent(stop.latitude, stop.longitude);
+
+  return {
+    id: stop.id,
+    name: stop.name,
+    latitude: stop.latitude,
+    longitude: stop.longitude,
+    x: coords.x,
+    y: coords.y,
+  };
+}
+
+function getCategoryLabel(place: ScoredPlace): string {
+  if ((place.categories & categoryMask.FOOD) !== 0) return "먹거리";
+  if ((place.categories & categoryMask.CAFE) !== 0) return "카페";
+  if ((place.themes & themeMask.NATURE) !== 0) return "자연";
+  if ((place.categories & categoryMask.CULTURE) !== 0) return "문화/상권";
+  if ((place.categories & categoryMask.TOUR) !== 0) return "문화/상권";
+  return "기타";
+}
+
+function getPlaceType(place: ScoredPlace): TimelinePlace["type"] {
+  if (place.averageTime >= 100) return "target";
+  if ((place.categories & (categoryMask.TOUR | categoryMask.CULTURE)) !== 0) {
+    return "active";
+  }
+  return "normal";
+}
+
+function buildUserInput(
+  theme: string,
+  meal: string,
+  durationLabel: string,
+  selectedStartTime: string,
+): UserRouteInput {
+  const selectedOkdongMinutes = parseDurationToMinutes(durationLabel);
+
+  let categories =
+    categoryMask.TOUR | categoryMask.FOOD | categoryMask.CAFE | categoryMask.CULTURE;
+
+  if (meal === "카페만") {
+    categories = categoryMask.CAFE;
+  } else if (meal === "관광지만") {
+    categories = categoryMask.TOUR | categoryMask.CULTURE;
+  }
+
+  return {
+    startTime: selectedStartTime,
+    // 화면에서는 옥동 내부 시간을 보여주고, 알고리즘 내부에서는 경국대→옥동 이동 여유를 더해준다.
+    totalAvailableTime: selectedOkdongMinutes + SCHOOL_TO_OKDONG_ROUTE_BUFFER_MINUTES,
+    themes: THEME_TO_MASK[theme] || 0,
+    categories,
+    mealRequired: meal === "식사 포함",
+    maxPlaceCount:
+      selectedOkdongMinutes <= 120
+        ? 3
+        : selectedOkdongMinutes <= 180
+          ? 4
+          : selectedOkdongMinutes <= 240
+            ? 5
+            : 6,
+    startBusStopId: SCHOOL_STOP_ID,
+    endBusStopId: SCHOOL_STOP_ID,
+  };
+}
+
+function getWalkMinutesBetween(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+): number {
+  const distance = calculateMapDistance(a, b);
+  return calculateWalkTimeFromDistance(distance);
+}
+
+function convertFinalRouteToGeneratedPlan(
+  finalRoute: FinalRoute,
+  selectedStartTime: string,
+  durationLabel: string,
+): GeneratedPlan {
+  const selectedOkdongMinutes = parseDurationToMinutes(durationLabel);
+  const firstPlace = finalRoute.places[0];
+  const lastPlace = finalRoute.places[finalRoute.places.length - 1];
+
+  const startStop = getDisplayBusStop(
+    firstPlace?.nearestBusStopId || OKDONG_DEFAULT_STOP_ID,
+  );
+  const endStop = getDisplayBusStop(lastPlace?.nearestBusStopId || startStop.id);
+
+  let currentMins = timeToMinutes(
+    finalRoute.startBus?.arrivalTime || selectedStartTime,
+  );
+
+  const timelineRoute: TimelinePlace[] = finalRoute.places.map((place, index) => {
+    const previousPath = index > 0 ? finalRoute.paths[index - 1] : null;
+
+    const walkFromPrevMinutes =
+      index === 0
+        ? getWalkMinutesBetween(startStop, place)
+        : previousPath?.bus
+          ? 0
+          : previousPath?.walkTime || 0;
+
+    if (index === 0) {
+      currentMins += walkFromPrevMinutes;
+    } else if (previousPath?.bus) {
+      currentMins += previousPath.bus.waitTime + previousPath.bus.rideTime;
+    } else {
+      currentMins += walkFromPrevMinutes;
+    }
+
+    const startTimeStr = minutesToTime(currentMins);
+    currentMins += place.averageTime;
+    const endTimeStr = minutesToTime(currentMins);
+
+    const coords = projectLatLonToMapPercent(place.latitude, place.longitude);
+
+    return {
+      id: place.id,
+      name: place.name,
+      x: coords.x,
+      y: coords.y,
+      category: getCategoryLabel(place),
+      categoryBit: place.categories,
+      themeBit: place.themes,
+      duration: place.averageTime,
+      type: getPlaceType(place),
+      description:
+        place.reasons.length > 0
+          ? `${place.description} ${place.reasons.join(" ")}`
+          : place.description,
+      nearestBusStopId: place.nearestBusStopId,
+      startTimeStr,
+      endTimeStr,
+      walkFromPrevMinutes,
+      score: place.score,
+      reasons: place.reasons,
+    };
+  });
+
+  const returnWalkMinutes = lastPlace ? getWalkMinutesBetween(lastPlace, endStop) : 0;
+  const okdongStartTime = finalRoute.startBus?.arrivalTime || selectedStartTime;
+  const okdongEndTime = minutesToTime(currentMins + returnWalkMinutes);
+  const actualEndTime =
+    finalRoute.returnBus?.arrivalTime ||
+    minutesToTime(timeToMinutes(selectedStartTime) + finalRoute.timeSummary.totalTime);
+
+  const outboundExtra = finalRoute.startBus
+    ? finalRoute.startBus.waitTime + finalRoute.startBus.rideTime
+    : 0;
+  const returnExtra = finalRoute.returnBus
+    ? finalRoute.returnBus.waitTime + finalRoute.returnBus.rideTime
+    : 0;
+  const extraMinutes = outboundExtra + returnExtra;
+  const okdongUsedMinutes = diffMinutes(okdongStartTime, okdongEndTime);
+
+  const endPoint =
+    endStop.id === startStop.id
+      ? {
+          ...endStop,
+          x: Math.min(endStop.x + 3, 96),
+          y: Math.min(endStop.y + 3, 96),
+        }
+      : endStop;
+
+  const routeMapPoints: RouteMapPoint[] = [
+    {
+      key: `bus-start-${startStop.id}`,
+      name: startStop.name,
+      x: startStop.x,
+      y: startStop.y,
+      kind: "bus",
+    },
+    ...timelineRoute.map((place) => ({
+      key: `place-${place.id}`,
+      name: place.name,
+      x: place.x,
+      y: place.y,
+      kind: "place" as const,
+      placeType: place.type,
+    })),
+    {
+      key: `bus-end-${endStop.id}`,
+      name: endStop.name,
+      x: endPoint.x,
+      y: endPoint.y,
+      kind: "bus",
+    },
+  ];
+
+  return {
+    places: finalRoute.places,
+    timelineRoute,
+    routeMapPoints,
+    startStop,
+    endStop,
+    outboundBus: finalRoute.startBus,
+    returnBus: finalRoute.returnBus,
+    selectedStartTime,
+    selectedDurationLabel: durationLabel,
+    selectedOkdongMinutes,
+    okdongStartTime,
+    okdongEndTime,
+    actualEndTime,
+    okdongUsedMinutes,
+    okdongRemainMinutes: selectedOkdongMinutes - okdongUsedMinutes,
+    extraMinutes,
+    totalMinutes: finalRoute.timeSummary.totalTime,
+    returnWalkMinutes,
+  };
+}
+
+function buildGeneratedPlan(
+  theme: string,
+  meal: string,
+  durationLabel: string,
+  selectedStartTime: string,
+): GeneratedPlan {
+  const userInput = buildUserInput(theme, meal, durationLabel, selectedStartTime);
+  const finalRoute = createRoute(userInput);
+  return convertFinalRouteToGeneratedPlan(finalRoute, selectedStartTime, durationLabel);
+}
 
 // 모바일 화면 넓이에 따른 커스텀 지도 좌표 매핑 계산
 const MAP_WIDTH = Dimensions.get("window").width - 72;
@@ -60,10 +429,6 @@ export default function AndongTravelApp() {
 
   const filteredCards = useMemo(() => {
     if (selectedTag === "전체") return timelineRoute;
-    if (selectedTag === "쇼핑/편의")
-      return timelineRoute.filter(
-        (p) => p.category === "쇼핑" || p.category === "편의점",
-      );
     return timelineRoute.filter((p) => p.category === selectedTag);
   }, [timelineRoute, selectedTag]);
 
@@ -546,7 +911,7 @@ export default function AndongTravelApp() {
               <>
                 <View style={styles.fixedTagArea}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    {["전체", "카페", "먹거리", "자연", "쇼핑/편의"].map(
+                    {["전체", "카페", "먹거리", "자연", "문화/상권"].map(
                       (tag) => (
                         <TouchableOpacity
                           key={tag}
