@@ -13,7 +13,7 @@ import {
 import Svg, { Polyline } from "react-native-svg";
 
 // ============================================================================
-import { buildGeneratedPlan, getBusStopName } from "../src/algorithms/okdongRouteMaker";
+import { buildGeneratedPlan, getBusStopName } from "../src/algorithms/";
 import type { GeneratedPlan } from "../src/types/okdongRoute";
 
 const okdongMapImage = require("../assets/images/okdong_mock_map.png");
